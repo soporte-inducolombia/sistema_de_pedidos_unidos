@@ -1,0 +1,150 @@
+<?php
+
+namespace Tests\Feature\Admin;
+
+use App\Models\Provider;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class UserManagementTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /**
+     * Ensure admins can access users administration.
+     */
+    public function test_admin_can_view_users_management_page(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $managedUser = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.users.index'));
+
+        $response->assertOk();
+        $response->assertSee($managedUser->email);
+    }
+
+    public function test_non_admin_users_cannot_access_users_management_page(): void
+    {
+        $provider = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $response = $this->actingAs($provider)->get(route('admin.users.index'));
+
+        $response->assertForbidden();
+    }
+
+    public function test_admin_can_update_user_name_email_and_role(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $targetUser = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $response = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
+            'name' => 'Usuario Editado',
+            'email' => 'usuario.editado@example.com',
+            'role' => 'admin',
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+
+        $this->assertDatabaseHas('users', [
+            'id' => $targetUser->id,
+            'name' => 'Usuario Editado',
+            'email' => 'usuario.editado@example.com',
+            'role' => 'admin',
+        ]);
+    }
+
+    public function test_admin_can_delete_another_user_but_not_self(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $targetUser = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $response = $this->actingAs($admin)->delete(route('admin.users.destroy', $targetUser));
+
+        $response->assertRedirect(route('admin.users.index'));
+        $this->assertDatabaseMissing('users', [
+            'id' => $targetUser->id,
+        ]);
+
+        $selfDeleteResponse = $this->actingAs($admin)->delete(route('admin.users.destroy', $admin));
+
+        $selfDeleteResponse->assertSessionHasErrors('delete');
+        $this->assertDatabaseHas('users', [
+            'id' => $admin->id,
+        ]);
+    }
+
+    public function test_assigning_provider_role_creates_and_toggles_provider_profile(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $targetUser = User::factory()->create([
+            'role' => 'admin',
+            'name' => 'Proveedor Demo',
+            'email' => 'proveedor.demo@example.com',
+        ]);
+
+        $promoteResponse = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
+            'name' => $targetUser->name,
+            'email' => $targetUser->email,
+            'role' => 'provider',
+        ]);
+
+        $promoteResponse->assertRedirect(route('admin.users.index'));
+
+        $providerProfile = Provider::query()->where('user_id', $targetUser->id)->first();
+
+        $this->assertNotNull($providerProfile);
+
+        $this->assertDatabaseHas('providers', [
+            'user_id' => $targetUser->id,
+            'is_active' => true,
+        ]);
+
+        $demoteResponse = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
+            'name' => $targetUser->name,
+            'email' => $targetUser->email,
+            'role' => 'admin',
+        ]);
+
+        $demoteResponse->assertRedirect(route('admin.users.index'));
+
+        $this->assertDatabaseHas('providers', [
+            'user_id' => $targetUser->id,
+            'is_active' => false,
+        ]);
+
+        $reactivateResponse = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
+            'name' => $targetUser->name,
+            'email' => $targetUser->email,
+            'role' => 'provider',
+        ]);
+
+        $reactivateResponse->assertRedirect(route('admin.users.index'));
+
+        $this->assertDatabaseHas('providers', [
+            'user_id' => $targetUser->id,
+            'is_active' => true,
+        ]);
+    }
+}
