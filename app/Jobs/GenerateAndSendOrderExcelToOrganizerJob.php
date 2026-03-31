@@ -8,9 +8,12 @@ use App\Models\Order;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
+use RuntimeException;
+use Throwable;
 
 class GenerateAndSendOrderExcelToOrganizerJob implements ShouldBeUnique, ShouldQueue
 {
@@ -18,8 +21,25 @@ class GenerateAndSendOrderExcelToOrganizerJob implements ShouldBeUnique, ShouldQ
 
     public int $uniqueFor = 3600;
 
+    public int $tries;
+
+    public int $timeout;
+
     public function __construct(public int $orderId)
     {
+        $this->tries = (int) config('orders.mail.tries', 3);
+        $this->timeout = (int) config('orders.mail.timeout_seconds', 30);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function backoff(): array
+    {
+        return array_map(
+            static fn (mixed $value): int => (int) $value,
+            (array) config('orders.mail.backoff_seconds', [10, 30, 120]),
+        );
     }
 
     public function uniqueId(): string
@@ -34,7 +54,13 @@ class GenerateAndSendOrderExcelToOrganizerJob implements ShouldBeUnique, ShouldQ
             ->find($this->orderId);
 
         if ($order === null) {
-            return;
+            throw new RuntimeException('No se encontro la orden para generar el excel del organizador.');
+        }
+
+        $organizerEmail = (string) config('orders.organizer_email');
+
+        if (blank($organizerEmail)) {
+            throw new RuntimeException('No hay correo configurado para el organizador.');
         }
 
         $path = 'exports/orders/pedido-'.$order->public_id.'.xlsx';
@@ -42,11 +68,20 @@ class GenerateAndSendOrderExcelToOrganizerJob implements ShouldBeUnique, ShouldQ
         Excel::store(new OrderConfirmedExport($order), $path, 'local');
 
         try {
-            Mail::to((string) config('orders.organizer_email'))->send(
-                new OrderExcelForOrganizerMail($order, $path),
-            );
+            Mail::mailer((string) config('orders.mail.mailer', config('mail.default', 'smtp')))
+                ->to($organizerEmail)
+                ->send(new OrderExcelForOrganizerMail($order, $path));
         } finally {
             Storage::disk('local')->delete($path);
         }
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::error('Fallo el envio del excel al organizador.', [
+            'job' => self::class,
+            'order_id' => $this->orderId,
+            'exception' => $exception->getMessage(),
+        ]);
     }
 }

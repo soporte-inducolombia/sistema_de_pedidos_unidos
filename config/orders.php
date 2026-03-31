@@ -3,6 +3,13 @@
 return [
     'organizer_email' => env('ORDERS_ORGANIZER_EMAIL', 'compras2@unidos.com.co'),
 
+    'mail' => [
+        'mailer' => env('ORDERS_MAILER', env('MAIL_MAILER', 'smtp')),
+        'tries' => (int) env('ORDERS_MAIL_TRIES', 3),
+        'timeout_seconds' => (int) env('ORDERS_MAIL_TIMEOUT_SECONDS', 30),
+        'backoff_seconds' => [10, 30, 120],
+    ],
+
     'otp' => [
         'length' => 6,
         'ttl_minutes' => 10,
