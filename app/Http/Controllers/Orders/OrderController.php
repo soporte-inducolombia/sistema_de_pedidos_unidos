@@ -13,8 +13,10 @@ use App\Services\OrderOtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class OrderController extends Controller
 {
@@ -107,13 +109,31 @@ class OrderController extends Controller
             return $order->fresh(['items', 'otp']);
         });
 
-        SendOrderOtpMailJob::dispatch($order->id, $otpCode)
-            ->onQueue((string) config('orders.queues.otp', 'mails'))
-            ->afterCommit();
+        $otpSent = true;
+
+        try {
+            SendOrderOtpMailJob::dispatch($order->id, $otpCode)
+                ->onQueue((string) config('orders.queues.otp', 'mails'))
+                ->afterCommit();
+        } catch (Throwable $exception) {
+            $otpSent = false;
+
+            Log::error('No fue posible despachar el correo OTP para la orden.', [
+                'order_id' => $order->id,
+                'customer_email' => $order->customer_email,
+                'queue_connection' => (string) config('queue.default'),
+                'exception' => $exception->getMessage(),
+            ]);
+        }
 
         if ($request->expectsJson()) {
+            $message = $otpSent
+                ? 'Orden generada en estado pendiente. OTP enviado al cliente.'
+                : 'Orden generada en estado pendiente, pero no fue posible enviar OTP en este momento. Intenta reenviarlo.';
+
             return response()->json([
-                'message' => 'Orden generada en estado pendiente. OTP enviado al cliente.',
+                'message' => $message,
+                'otp_delivery' => $otpSent ? 'sent' : 'failed',
                 'order' => [
                     'public_id' => $order->public_id,
                     'status' => $order->status,
@@ -123,9 +143,13 @@ class OrderController extends Controller
                     'total_discount' => $order->total_discount,
                     'otp_expires_at' => $order->otp?->expires_at,
                 ],
-            ], 201);
+            ], $otpSent ? 201 : 202);
         }
 
-        return to_route('dashboard')->with('status', 'Orden generada correctamente. OTP enviado al cliente.');
+        $statusMessage = $otpSent
+            ? 'Orden generada correctamente. OTP enviado al cliente.'
+            : 'Orden generada correctamente, pero no fue posible enviar OTP. Intenta reenviarlo desde el dashboard.';
+
+        return to_route('dashboard')->with('status', $statusMessage);
     }
 }

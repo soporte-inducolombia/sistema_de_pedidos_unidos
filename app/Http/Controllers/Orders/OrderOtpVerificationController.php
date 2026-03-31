@@ -14,7 +14,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class OrderOtpVerificationController extends Controller
 {
@@ -118,15 +120,32 @@ class OrderOtpVerificationController extends Controller
 
         $confirmedOrderId = (int) $result['order_id'];
 
-        event(new OrderConfirmed($confirmedOrderId));
+        $postConfirmationQueued = true;
+
+        try {
+            event(new OrderConfirmed($confirmedOrderId));
+        } catch (Throwable $exception) {
+            $postConfirmationQueued = false;
+
+            Log::error('La orden se confirmo, pero fallo el despacho de correos/postprocesos.', [
+                'order_id' => $confirmedOrderId,
+                'queue_connection' => (string) config('queue.default'),
+                'exception' => $exception->getMessage(),
+            ]);
+        }
 
         $confirmedOrder = Order::query()
             ->with(['items', 'provider.user'])
             ->findOrFail($confirmedOrderId);
 
         if ($request->expectsJson()) {
+            $message = $postConfirmationQueued
+                ? 'Orden confirmada correctamente.'
+                : 'Orden confirmada, pero no fue posible despachar correos de confirmacion en este momento.';
+
             return response()->json([
-                'message' => 'Orden confirmada correctamente.',
+                'message' => $message,
+                'post_confirmation_delivery' => $postConfirmationQueued ? 'queued' : 'failed',
                 'order' => [
                     'public_id' => $confirmedOrder->public_id,
                     'status' => $confirmedOrder->status,
@@ -137,7 +156,11 @@ class OrderOtpVerificationController extends Controller
             ]);
         }
 
-        return to_route('dashboard')->with('status', 'Orden confirmada correctamente.');
+        $statusMessage = $postConfirmationQueued
+            ? 'Orden confirmada correctamente.'
+            : 'Orden confirmada, pero no fue posible despachar correos de confirmacion en este momento.';
+
+        return to_route('dashboard')->with('status', $statusMessage);
     }
 
     public function resend(Request $request, Order $order, OrderOtpService $otpService): JsonResponse|RedirectResponse
@@ -145,9 +168,9 @@ class OrderOtpVerificationController extends Controller
         $provider = $this->resolveProvider($request);
         $this->ensureProviderOrder($order, $provider);
 
-        $otpCode = null;
+        $otpCode = $otpService->generateCode();
 
-        $orderWithOtp = DB::transaction(function () use ($order, $provider, $otpService, &$otpCode): Order {
+        $orderWithOtp = DB::transaction(function () use ($order, $provider, $otpService): Order {
             $lockedOrder = Order::query()
                 ->whereKey($order->id)
                 ->with('otp')
@@ -176,7 +199,53 @@ class OrderOtpVerificationController extends Controller
                 ]);
             }
 
-            $otpCode = $otpService->generateCode();
+            return $lockedOrder->fresh('otp');
+        });
+
+        try {
+            SendOrderOtpMailJob::dispatch($orderWithOtp->id, (string) $otpCode)
+                ->onQueue((string) config('orders.queues.otp', 'mails'))
+                ->afterCommit();
+        } catch (Throwable $exception) {
+            Log::error('No fue posible despachar el reenvio de OTP.', [
+                'order_id' => $orderWithOtp->id,
+                'queue_connection' => (string) config('queue.default'),
+                'exception' => $exception->getMessage(),
+            ]);
+
+            throw ValidationException::withMessages([
+                'code' => 'No fue posible reenviar OTP en este momento. Intenta nuevamente en unos minutos.',
+            ]);
+        }
+
+        $updatedOrder = DB::transaction(function () use ($orderWithOtp, $provider, $otpService, $otpCode): Order {
+            $lockedOrder = Order::query()
+                ->whereKey($orderWithOtp->id)
+                ->with('otp')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->ensureProviderOrder($lockedOrder, $provider);
+
+            if ($lockedOrder->status !== OrderStatus::PENDING) {
+                throw ValidationException::withMessages([
+                    'order' => 'Solo se puede reenviar OTP en ordenes pendientes.',
+                ]);
+            }
+
+            $otp = $lockedOrder->otp;
+
+            if ($otp === null || $otp->verified_at !== null) {
+                throw ValidationException::withMessages([
+                    'code' => 'La orden no tiene un OTP reenviable.',
+                ]);
+            }
+
+            if (! $otpService->canResend($otp)) {
+                throw ValidationException::withMessages([
+                    'code' => 'Aun no es posible reenviar OTP o ya se alcanzo el limite de reenvios.',
+                ]);
+            }
 
             $otp->forceFill([
                 'code_hash' => $otpService->hashCode($otpCode),
@@ -189,16 +258,12 @@ class OrderOtpVerificationController extends Controller
             return $lockedOrder->fresh('otp');
         });
 
-        SendOrderOtpMailJob::dispatch($orderWithOtp->id, (string) $otpCode)
-            ->onQueue((string) config('orders.queues.otp', 'mails'))
-            ->afterCommit();
-
         if ($request->expectsJson()) {
             return response()->json([
                 'message' => 'OTP reenviado al correo del cliente.',
                 'order' => [
-                    'public_id' => $orderWithOtp->public_id,
-                    'otp_expires_at' => $orderWithOtp->otp?->expires_at,
+                    'public_id' => $updatedOrder->public_id,
+                    'otp_expires_at' => $updatedOrder->otp?->expires_at,
                 ],
             ]);
         }
