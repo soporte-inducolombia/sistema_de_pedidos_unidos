@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Provider extends Model
 {
     /** @use HasFactory<ProviderFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $guarded = [];
 

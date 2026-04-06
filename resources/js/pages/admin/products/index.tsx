@@ -1,4 +1,14 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
+import {
+    Boxes,
+    CircleDollarSign,
+    Eye,
+    PackagePlus,
+    PencilLine,
+    Search,
+    Trash2,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -12,18 +22,12 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-    destroy,
-    index,
-    store,
-    update,
-} from '@/routes/admin/products';
+import { destroy, index, store, update } from '@/routes/admin/products';
 
 type ProductItem = {
     id: number;
-    category_id: number;
-    category_name: string | null;
-    sku: string;
+    code: string;
+    barcode: string;
     name: string;
     description: string | null;
     original_price: string;
@@ -31,15 +35,8 @@ type ProductItem = {
     provider_products_count: number;
 };
 
-type CategoryOption = {
-    id: number;
-    name: string;
-    is_active: boolean;
-};
-
 type Props = {
     products: ProductItem[];
-    categories: CategoryOption[];
     status?: string;
 };
 
@@ -51,21 +48,22 @@ type SharedPageProps = {
 
 function EditableProductCard({
     product,
-    categories,
 }: {
     product: ProductItem;
-    categories: CategoryOption[];
 }) {
+    const [isViewing, setIsViewing] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+
     const form = useForm<{
-        category_id: number;
-        sku: string;
+        code: string;
+        barcode: string;
         name: string;
         description: string;
         original_price: string;
         is_active: boolean;
     }>({
-        category_id: product.category_id,
-        sku: product.sku,
+        code: product.code,
+        barcode: product.barcode,
         name: product.name,
         description: product.description ?? '',
         original_price: product.original_price,
@@ -94,179 +92,256 @@ function EditableProductCard({
         });
     };
 
+    const toggleView = () => {
+        setIsViewing((previous) => !previous);
+    };
+
+    const toggleEdit = () => {
+        setIsEditing((previous) => !previous);
+        setIsViewing(true);
+    };
+
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex items-center justify-between gap-3">
+        <Card className="overflow-hidden border-emerald-500/20 shadow-sm">
+            <CardHeader className="gap-4 bg-linear-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <CardTitle>{product.name}</CardTitle>
                         <CardDescription>
-                            {product.sku} • {product.category_name ?? 'Sin categoria'}
+                            COD {product.code} • Barras {product.barcode}
                         </CardDescription>
                     </div>
-                    <Badge variant="outline">
+                    <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 bg-emerald-500/5"
+                    >
                         {product.provider_products_count} asignaciones
                     </Badge>
                 </div>
+
+                <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                        type="button"
+                        variant={isViewing ? 'secondary' : 'outline'}
+                        size="sm"
+                        onClick={toggleView}
+                    >
+                        <Eye />
+                        Ver
+                    </Button>
+                    <Button
+                        type="button"
+                        variant={isEditing ? 'secondary' : 'outline'}
+                        size="sm"
+                        onClick={toggleEdit}
+                    >
+                        <PencilLine />
+                        Editar
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleDelete}
+                        disabled={
+                            form.processing || product.provider_products_count > 0
+                        }
+                    >
+                        <Trash2 />
+                        Eliminar
+                    </Button>
+                </div>
             </CardHeader>
-            <CardContent>
-                <form onSubmit={submit} className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <div className="space-y-2">
-                            <label
-                                htmlFor={`product-category-${product.id}`}
-                                className="text-sm font-medium"
-                            >
-                                Categoria
-                            </label>
-                            <select
-                                id={`product-category-${product.id}`}
-                                value={form.data.category_id}
-                                onChange={(event) =>
-                                    form.setData(
-                                        'category_id',
-                                        Number(event.target.value),
-                                    )
-                                }
-                                className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                            >
-                                {categories.map((category) => (
-                                    <option key={category.id} value={category.id}>
-                                        {category.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <InputError message={form.errors.category_id} />
+
+            {isViewing && (
+                <CardContent className="border-t border-emerald-500/15 bg-background/80">
+                    <div className="grid gap-4 text-sm md:grid-cols-4">
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Codigo
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">{product.code}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Codigo de barras
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">{product.barcode}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Precio base
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">
+                                ${product.original_price}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Estado
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">
+                                {product.is_active ? 'Activo' : 'Inactivo'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {product.description && (
+                        <div className="mt-4 rounded-lg border border-slate-200/70 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Descripcion
+                            </p>
+                            <p className="mt-1 text-foreground">{product.description}</p>
+                        </div>
+                    )}
+
+                    {product.provider_products_count > 0 && (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            El producto tiene proveedores asignados y no puede eliminarse.
+                        </p>
+                    )}
+                </CardContent>
+            )}
+
+            {isEditing && (
+                <CardContent className="border-t border-dashed border-emerald-500/30 bg-emerald-500/3">
+                    <form onSubmit={submit} className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`product-code-${product.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Codigo
+                                </label>
+                                <Input
+                                    id={`product-code-${product.id}`}
+                                    value={form.data.code}
+                                    onChange={(event) =>
+                                        form.setData('code', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.code} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`product-barcode-${product.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Codigo de barras
+                                </label>
+                                <Input
+                                    id={`product-barcode-${product.id}`}
+                                    value={form.data.barcode}
+                                    onChange={(event) =>
+                                        form.setData('barcode', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.barcode} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`product-price-${product.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Precio original
+                                </label>
+                                <Input
+                                    id={`product-price-${product.id}`}
+                                    value={form.data.original_price}
+                                    onChange={(event) =>
+                                        form.setData('original_price', event.target.value)
+                                    }
+                                    inputMode="decimal"
+                                />
+                                <InputError message={form.errors.original_price} />
+                            </div>
                         </div>
 
                         <div className="space-y-2">
                             <label
-                                htmlFor={`product-sku-${product.id}`}
+                                htmlFor={`product-name-${product.id}`}
                                 className="text-sm font-medium"
                             >
-                                SKU
+                                Nombre
                             </label>
                             <Input
-                                id={`product-sku-${product.id}`}
-                                value={form.data.sku}
+                                id={`product-name-${product.id}`}
+                                value={form.data.name}
                                 onChange={(event) =>
-                                    form.setData('sku', event.target.value)
+                                    form.setData('name', event.target.value)
                                 }
                             />
-                            <InputError message={form.errors.sku} />
+                            <InputError message={form.errors.name} />
                         </div>
 
                         <div className="space-y-2">
                             <label
-                                htmlFor={`product-price-${product.id}`}
+                                htmlFor={`product-description-${product.id}`}
                                 className="text-sm font-medium"
                             >
-                                Precio original
+                                Descripcion
                             </label>
-                            <Input
-                                id={`product-price-${product.id}`}
-                                value={form.data.original_price}
+                            <textarea
+                                id={`product-description-${product.id}`}
+                                value={form.data.description}
                                 onChange={(event) =>
-                                    form.setData(
-                                        'original_price',
-                                        event.target.value,
-                                    )
+                                    form.setData('description', event.target.value)
                                 }
-                                inputMode="decimal"
+                                rows={3}
+                                className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex w-full min-w-0 rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                             />
-                            <InputError message={form.errors.original_price} />
+                            <InputError message={form.errors.description} />
                         </div>
-                    </div>
 
-                    <div className="space-y-2">
-                        <label
-                            htmlFor={`product-name-${product.id}`}
-                            className="text-sm font-medium"
-                        >
-                            Nombre
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                                type="checkbox"
+                                checked={form.data.is_active}
+                                onChange={(event) =>
+                                    form.setData('is_active', event.target.checked)
+                                }
+                                className="size-4 rounded border"
+                            />
+                            Producto activo
                         </label>
-                        <Input
-                            id={`product-name-${product.id}`}
-                            value={form.data.name}
-                            onChange={(event) =>
-                                form.setData('name', event.target.value)
-                            }
-                        />
-                        <InputError message={form.errors.name} />
-                    </div>
+                        <InputError message={form.errors.is_active} />
 
-                    <div className="space-y-2">
-                        <label
-                            htmlFor={`product-description-${product.id}`}
-                            className="text-sm font-medium"
-                        >
-                            Descripcion
-                        </label>
-                        <textarea
-                            id={`product-description-${product.id}`}
-                            value={form.data.description}
-                            onChange={(event) =>
-                                form.setData('description', event.target.value)
-                            }
-                            rows={3}
-                            className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex w-full min-w-0 rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                        />
-                        <InputError message={form.errors.description} />
-                    </div>
-
-                    <label className="flex items-center gap-2 text-sm font-medium">
-                        <input
-                            type="checkbox"
-                            checked={form.data.is_active}
-                            onChange={(event) =>
-                                form.setData('is_active', event.target.checked)
-                            }
-                            className="size-4 rounded border"
-                        />
-                        Producto activo
-                    </label>
-                    <InputError message={form.errors.is_active} />
-
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button type="submit" disabled={form.processing}>
-                            Guardar cambios
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="destructive"
-                            onClick={handleDelete}
-                            disabled={
-                                form.processing ||
-                                product.provider_products_count > 0
-                            }
-                        >
-                            Eliminar producto
-                        </Button>
-                        {product.provider_products_count > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                                El producto tiene proveedores asignados.
-                            </span>
-                        )}
-                    </div>
-                </form>
-            </CardContent>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button type="submit" disabled={form.processing}>
+                                Guardar cambios
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsEditing(false)}
+                            >
+                                Cancelar edicion
+                            </Button>
+                        </div>
+                    </form>
+                </CardContent>
+            )}
         </Card>
     );
 }
 
-export default function ProductsIndex({ products, categories, status }: Props) {
+export default function ProductsIndex({ products, status }: Props) {
     const { errors } = usePage<SharedPageProps>().props;
+    const [search, setSearch] = useState('');
 
     const createForm = useForm<{
-        category_id: number | '';
-        sku: string;
+        code: string;
+        barcode: string;
         name: string;
         description: string;
         original_price: string;
         is_active: boolean;
     }>({
-        category_id: categories[0]?.id ?? '',
-        sku: '',
+        code: '',
+        barcode: '',
         name: '',
         description: '',
         original_price: '',
@@ -280,13 +355,28 @@ export default function ProductsIndex({ products, categories, status }: Props) {
             preserveScroll: true,
             onSuccess: () => {
                 createForm.reset();
-                createForm.setData('category_id', categories[0]?.id ?? '');
                 createForm.setData('is_active', true);
             },
         });
     };
 
-    const activeCategories = categories.filter((category) => category.is_active);
+    const activeProducts = products.filter((product) => product.is_active).length;
+
+    const filteredProducts = useMemo(() => {
+        const term = search.trim().toLowerCase();
+
+        if (!term) {
+            return products;
+        }
+
+        return products.filter((product) => {
+            return (
+                product.name.toLowerCase().includes(term) ||
+                product.code.toLowerCase().includes(term) ||
+                product.barcode.toLowerCase().includes(term)
+            );
+        });
+    }, [products, search]);
 
     return (
         <>
@@ -295,8 +385,51 @@ export default function ProductsIndex({ products, categories, status }: Props) {
             <div className="space-y-6 p-4">
                 <Heading
                     title="Administracion de productos"
-                    description="Gestiona el catalogo comercial y sus precios base"
+                    description="Gestiona el catalogo con un flujo mas rapido y visual"
                 />
+
+                <Card className="border-emerald-500/25 bg-linear-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10">
+                    <CardContent className="grid gap-3 p-4 text-sm md:grid-cols-3">
+                        <div className="rounded-lg border border-white/30 bg-background/70 p-3 backdrop-blur-sm dark:border-slate-700/60">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Productos registrados
+                            </p>
+                            <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
+                                <Boxes className="size-5 text-emerald-600" />
+                                {products.length}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/30 bg-background/70 p-3 backdrop-blur-sm dark:border-slate-700/60">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Productos activos
+                            </p>
+                            <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
+                                <Boxes className="size-5 text-teal-600" />
+                                {activeProducts}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/30 bg-background/70 p-3 backdrop-blur-sm dark:border-slate-700/60">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Precio promedio visible
+                            </p>
+                            <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
+                                <CircleDollarSign className="size-5 text-cyan-600" />
+                                {products.length > 0
+                                    ? `$${(
+                                          products.reduce((sum, product) => {
+                                              return (
+                                                  sum +
+                                                  Number.parseFloat(
+                                                      product.original_price,
+                                                  )
+                                              );
+                                          }, 0) / products.length
+                                      ).toFixed(2)}`
+                                    : '$0.00'}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {status && (
                     <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -312,7 +445,10 @@ export default function ProductsIndex({ products, categories, status }: Props) {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Crear producto</CardTitle>
+                        <CardTitle className="flex items-center gap-2">
+                            <PackagePlus className="size-4 text-emerald-600" />
+                            Crear producto
+                        </CardTitle>
                         <CardDescription>
                             Define productos base para asignarlos a proveedores.
                         </CardDescription>
@@ -322,53 +458,38 @@ export default function ProductsIndex({ products, categories, status }: Props) {
                             <div className="grid gap-4 md:grid-cols-3">
                                 <div className="space-y-2">
                                     <label
-                                        htmlFor="new-product-category"
+                                        htmlFor="new-product-code"
                                         className="text-sm font-medium"
                                     >
-                                        Categoria
+                                        Codigo
                                     </label>
-                                    <select
-                                        id="new-product-category"
-                                        value={createForm.data.category_id}
+                                    <Input
+                                        id="new-product-code"
+                                        value={createForm.data.code}
                                         onChange={(event) =>
-                                            createForm.setData(
-                                                'category_id',
-                                                Number(event.target.value),
-                                            )
+                                            createForm.setData('code', event.target.value)
                                         }
-                                        className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                                        disabled={activeCategories.length === 0}
-                                    >
-                                        {activeCategories.map((category) => (
-                                            <option key={category.id} value={category.id}>
-                                                {category.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <InputError
-                                        message={createForm.errors.category_id}
+                                        placeholder="COD-0001"
                                     />
+                                    <InputError message={createForm.errors.code} />
                                 </div>
 
                                 <div className="space-y-2">
                                     <label
-                                        htmlFor="new-product-sku"
+                                        htmlFor="new-product-barcode"
                                         className="text-sm font-medium"
                                     >
-                                        SKU
+                                        Codigo de barras
                                     </label>
                                     <Input
-                                        id="new-product-sku"
-                                        value={createForm.data.sku}
+                                        id="new-product-barcode"
+                                        value={createForm.data.barcode}
                                         onChange={(event) =>
-                                            createForm.setData(
-                                                'sku',
-                                                event.target.value,
-                                            )
+                                            createForm.setData('barcode', event.target.value)
                                         }
-                                        placeholder="SKU-0001"
+                                        placeholder="7701234567890"
                                     />
-                                    <InputError message={createForm.errors.sku} />
+                                    <InputError message={createForm.errors.barcode} />
                                 </div>
 
                                 <div className="space-y-2">
@@ -425,17 +546,12 @@ export default function ProductsIndex({ products, categories, status }: Props) {
                                     id="new-product-description"
                                     value={createForm.data.description}
                                     onChange={(event) =>
-                                        createForm.setData(
-                                            'description',
-                                            event.target.value,
-                                        )
+                                        createForm.setData('description', event.target.value)
                                     }
                                     rows={3}
                                     className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex w-full min-w-0 rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                 />
-                                <InputError
-                                    message={createForm.errors.description}
-                                />
+                                <InputError message={createForm.errors.description} />
                             </div>
 
                             <label className="flex items-center gap-2 text-sm font-medium">
@@ -443,10 +559,7 @@ export default function ProductsIndex({ products, categories, status }: Props) {
                                     type="checkbox"
                                     checked={createForm.data.is_active}
                                     onChange={(event) =>
-                                        createForm.setData(
-                                            'is_active',
-                                            event.target.checked,
-                                        )
+                                        createForm.setData('is_active', event.target.checked)
                                     }
                                     className="size-4 rounded border"
                                 />
@@ -455,10 +568,7 @@ export default function ProductsIndex({ products, categories, status }: Props) {
 
                             <Button
                                 type="submit"
-                                disabled={
-                                    createForm.processing ||
-                                    activeCategories.length === 0
-                                }
+                                disabled={createForm.processing}
                             >
                                 Crear producto
                             </Button>
@@ -466,14 +576,43 @@ export default function ProductsIndex({ products, categories, status }: Props) {
                     </CardContent>
                 </Card>
 
+                <Card className="border-emerald-500/20">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Buscar producto</CardTitle>
+                        <CardDescription>
+                            Filtra por nombre, codigo o codigo de barras.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="relative">
+                            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                                placeholder="Ej. cuaderno, COD-1000, 7701234567890"
+                                className="pl-9"
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
+
                 <div className="grid gap-4">
-                    {products.map((product) => (
+                    {filteredProducts.map((product) => (
                         <EditableProductCard
                             key={product.id}
                             product={product}
-                            categories={categories}
                         />
                     ))}
+
+                    {filteredProducts.length === 0 && (
+                        <Card>
+                            <CardContent>
+                                <p className="py-2 text-sm text-muted-foreground">
+                                    No hay resultados para la busqueda actual.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             </div>
         </>

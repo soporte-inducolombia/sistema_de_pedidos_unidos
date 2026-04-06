@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Category;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Provider;
@@ -26,7 +25,6 @@ class DashboardController extends Controller
 
         if ($user?->isAdmin()) {
             $adminSummary = [
-                'categories_count' => Category::query()->count(),
                 'products_count' => Product::query()->count(),
                 'providers_count' => Provider::query()->count(),
                 'pending_orders_count' => Order::query()->where('status', 'pending')->count(),
@@ -38,6 +36,7 @@ class DashboardController extends Controller
                     ->get()
                     ->map(fn (Order $order): array => [
                         'public_id' => $order->public_id,
+                        'order_number' => $order->order_number,
                         'status' => $order->status->value,
                         'customer_email' => $order->customer_email,
                         'provider_name' => $order->provider?->company_name,
@@ -53,28 +52,25 @@ class DashboardController extends Controller
         if ($user?->isProvider() && $user->provider !== null) {
             $provider = $user->provider;
 
-            $providerProducts = ProviderProduct::query()
-                ->with(['product.category'])
+            $productsCount = ProviderProduct::query()
                 ->where('provider_id', $provider->id)
                 ->where('is_active', true)
-                ->whereHas('product', fn ($query) => $query
-                    ->where('is_active', true)
-                    ->whereHas('category', fn ($categoryQuery) => $categoryQuery->where('is_active', true)))
-                ->get()
-                ->sortBy(fn (ProviderProduct $providerProduct): string => (string) $providerProduct->product?->name)
-                ->values()
-                ->map(fn (ProviderProduct $providerProduct): array => [
-                    'id' => $providerProduct->id,
-                    'product_id' => $providerProduct->product_id,
-                    'product_name' => $providerProduct->product?->name,
-                    'sku' => $providerProduct->product?->sku,
-                    'category_name' => $providerProduct->product?->category?->name,
-                    'original_price' => (string) $providerProduct->product?->original_price,
-                    'special_price' => (string) $providerProduct->special_price,
-                    'discount_type' => $providerProduct->discount_type?->value,
-                    'discount_value' => (string) $providerProduct->discount_value,
-                ])
-                ->all();
+                ->whereHas('product', fn ($query) => $query->where('is_active', true))
+                ->count();
+
+            $pendingOrdersCount = Order::query()
+                ->where('provider_id', $provider->id)
+                ->where('status', 'pending')
+                ->count();
+
+            $confirmedOrdersCount = Order::query()
+                ->where('provider_id', $provider->id)
+                ->where('status', 'confirmed')
+                ->count();
+
+            $totalSavings = (float) Order::query()
+                ->where('provider_id', $provider->id)
+                ->sum('total_discount');
 
             $recentOrders = Order::query()
                 ->with('otp')
@@ -87,6 +83,7 @@ class DashboardController extends Controller
 
                     return [
                         'public_id' => $order->public_id,
+                        'order_number' => $order->order_number ?? $order->id,
                         'status' => $order->status->value,
                         'customer_email' => $order->customer_email,
                         'subtotal_special' => (string) $order->subtotal_special,
@@ -110,7 +107,12 @@ class DashboardController extends Controller
                     'company_name' => $provider->company_name,
                     'stand_label' => $provider->stand_label,
                 ],
-                'products' => $providerProducts,
+                'metrics' => [
+                    'products_count' => $productsCount,
+                    'pending_orders_count' => $pendingOrdersCount,
+                    'confirmed_orders_count' => $confirmedOrdersCount,
+                    'total_savings' => $totalSavings,
+                ],
                 'recent_orders' => $recentOrders,
             ];
         }

@@ -23,4 +23,8 @@ return [
         'notifications' => env('ORDERS_QUEUE_NOTIFICATIONS', 'mails'),
         'exports' => env('ORDERS_QUEUE_EXPORTS', 'exports'),
     ],
+
+    'signature' => [
+        'max_bytes' => (int) env('ORDERS_SIGNATURE_MAX_BYTES', 512000),
+    ],
 ];

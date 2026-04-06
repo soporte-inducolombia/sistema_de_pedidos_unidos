@@ -6,11 +6,12 @@ use Database\Factories\RoleFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Role extends Model
 {
     /** @use HasFactory<RoleFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $guarded = [];
 

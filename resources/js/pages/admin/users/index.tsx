@@ -1,4 +1,6 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { Eye, PencilLine, Search, Trash2, UserCog, Users } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -18,7 +20,7 @@ import type { UserRole } from '@/types';
 type ManagedUser = {
     id: number;
     name: string;
-    email: string;
+    username: string;
     role: UserRole;
     created_at: string | null;
 };
@@ -49,13 +51,16 @@ function EditableUserCard({
     roles: UserRole[];
     currentUserId: number;
 }) {
+    const [isViewing, setIsViewing] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+
     const form = useForm<{
         name: string;
-        email: string;
+        username: string;
         role: UserRole;
     }>({
         name: user.name,
-        email: user.email,
+        username: user.username,
         role: user.role,
     });
 
@@ -74,7 +79,7 @@ function EditableUserCard({
     const handleDelete = () => {
         if (
             !window.confirm(
-                `Se eliminara el usuario ${user.email}. Esta accion no se puede deshacer.`,
+                `Se eliminara el usuario @${user.username}. Esta accion no se puede deshacer.`,
             )
         ) {
             return;
@@ -85,109 +90,200 @@ function EditableUserCard({
         });
     };
 
+    const toggleView = () => {
+        setIsViewing((previous) => !previous);
+    };
+
+    const toggleEdit = () => {
+        setIsEditing((previous) => !previous);
+        setIsViewing(true);
+    };
+
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex items-center justify-between gap-3">
+        <Card className="overflow-hidden border-slate-200/70 shadow-sm dark:border-slate-800/80">
+            <CardHeader className="gap-4 bg-linear-to-r from-cyan-500/10 via-sky-500/10 to-teal-500/10">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <CardTitle>{user.name}</CardTitle>
-                        <CardDescription>{user.email}</CardDescription>
+                        <CardDescription>@{user.username}</CardDescription>
                     </div>
-                    <Badge variant="outline">{user.role}</Badge>
+                    <Badge variant="outline" className="border-cyan-500/30 bg-cyan-500/5">
+                        {user.role}
+                    </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                    Creado: {createdAtLabel}
-                </p>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={submit} className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                            <label
-                                htmlFor={`name-${user.id}`}
-                                className="text-sm font-medium"
-                            >
-                                Nombre
-                            </label>
-                            <Input
-                                id={`name-${user.id}`}
-                                value={form.data.name}
-                                onChange={(event) =>
-                                    form.setData('name', event.target.value)
-                                }
-                            />
-                            <InputError message={form.errors.name} />
-                        </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                        Creado: {createdAtLabel}
+                    </p>
 
-                        <div className="space-y-2">
-                            <label
-                                htmlFor={`email-${user.id}`}
-                                className="text-sm font-medium"
-                            >
-                                Correo
-                            </label>
-                            <Input
-                                id={`email-${user.id}`}
-                                type="email"
-                                value={form.data.email}
-                                onChange={(event) =>
-                                    form.setData('email', event.target.value)
-                                }
-                            />
-                            <InputError message={form.errors.email} />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label
-                            htmlFor={`role-${user.id}`}
-                            className="text-sm font-medium"
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            variant={isViewing ? 'secondary' : 'outline'}
+                            size="sm"
+                            onClick={toggleView}
                         >
-                            Rol
-                        </label>
-                        <select
-                            id={`role-${user.id}`}
-                            value={form.data.role}
-                            onChange={(event) =>
-                                form.setData('role', event.target.value as UserRole)
-                            }
-                            className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+                            <Eye />
+                            Ver
+                        </Button>
+                        <Button
+                            type="button"
+                            variant={isEditing ? 'secondary' : 'outline'}
+                            size="sm"
+                            onClick={toggleEdit}
                         >
-                            {roles.map((role) => (
-                                <option key={role} value={role}>
-                                    {role}
-                                </option>
-                            ))}
-                        </select>
-                        <InputError message={form.errors.role} />
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button type="submit" disabled={form.processing}>
-                            Guardar cambios
+                            <PencilLine />
+                            Editar
                         </Button>
                         <Button
                             type="button"
                             variant="destructive"
+                            size="sm"
                             onClick={handleDelete}
                             disabled={form.processing || currentUserId === user.id}
                         >
-                            Eliminar usuario
+                            <Trash2 />
+                            Eliminar
                         </Button>
-                        {currentUserId === user.id && (
-                            <span className="text-xs text-muted-foreground">
-                                No puedes eliminar tu propio usuario.
-                            </span>
-                        )}
                     </div>
-                </form>
-            </CardContent>
+                </div>
+            </CardHeader>
+            {isViewing && (
+                <CardContent className="border-t border-cyan-500/15 bg-background/80">
+                    <div className="grid gap-4 text-sm md:grid-cols-3">
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Nombre
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">{user.name}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Usuario
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">@{user.username}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Rol
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">{user.role}</p>
+                        </div>
+                    </div>
+
+                    {currentUserId === user.id && (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            No puedes eliminar tu propio usuario.
+                        </p>
+                    )}
+                </CardContent>
+            )}
+
+            {isEditing && (
+                <CardContent className="border-t border-dashed border-cyan-500/30 bg-cyan-500/3">
+                    <form onSubmit={submit} className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`name-${user.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Nombre
+                                </label>
+                                <Input
+                                    id={`name-${user.id}`}
+                                    value={form.data.name}
+                                    onChange={(event) =>
+                                        form.setData('name', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.name} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`username-${user.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Usuario
+                                </label>
+                                <Input
+                                    id={`username-${user.id}`}
+                                    value={form.data.username}
+                                    autoCapitalize="none"
+                                    onChange={(event) =>
+                                        form.setData('username', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.username} />
+                                <p className="text-xs text-muted-foreground">
+                                    Este usuario se usa para iniciar sesion.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label
+                                htmlFor={`role-${user.id}`}
+                                className="text-sm font-medium"
+                            >
+                                Rol
+                            </label>
+                            <select
+                                id={`role-${user.id}`}
+                                value={form.data.role}
+                                onChange={(event) =>
+                                    form.setData('role', event.target.value as UserRole)
+                                }
+                                className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {roles.map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={form.errors.role} />
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button type="submit" disabled={form.processing}>
+                                Guardar cambios
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsEditing(false)}
+                            >
+                                Cancelar edicion
+                            </Button>
+                        </div>
+                    </form>
+                </CardContent>
+            )}
         </Card>
     );
 }
 
 export default function UsersIndex({ users, roles, status }: Props) {
     const { auth, errors } = usePage<SharedPageProps>().props;
+    const [search, setSearch] = useState('');
+
+    const filteredUsers = useMemo(() => {
+        const term = search.trim().toLowerCase();
+
+        if (!term) {
+            return users;
+        }
+
+        return users.filter((user) => {
+            return (
+                user.name.toLowerCase().includes(term) ||
+                user.username.toLowerCase().includes(term) ||
+                user.role.toLowerCase().includes(term)
+            );
+        });
+    }, [search, users]);
 
     return (
         <>
@@ -196,8 +292,39 @@ export default function UsersIndex({ users, roles, status }: Props) {
             <div className="space-y-6 p-4">
                 <Heading
                     title="Administracion de usuarios"
-                    description="Gestiona usuarios y roles del sistema"
+                    description="Gestion intuitiva de cuentas con acciones rapidas por usuario"
                 />
+
+                <Card className="border-cyan-500/20 bg-linear-to-r from-cyan-500/10 via-sky-500/10 to-teal-500/10">
+                    <CardContent className="grid gap-3 p-4 text-sm md:grid-cols-2 lg:grid-cols-3">
+                        <div className="rounded-lg border border-white/30 bg-background/70 p-3 backdrop-blur-sm dark:border-slate-700/60">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Total de usuarios
+                            </p>
+                            <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
+                                <Users className="size-5 text-cyan-600" />
+                                {users.length}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/30 bg-background/70 p-3 backdrop-blur-sm dark:border-slate-700/60">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Roles disponibles
+                            </p>
+                            <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
+                                <UserCog className="size-5 text-sky-600" />
+                                {roles.length}
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-white/30 bg-background/70 p-3 backdrop-blur-sm dark:border-slate-700/60 md:col-span-2 lg:col-span-1">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Vista actual
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">
+                                Acciones separadas: ver, editar y eliminar
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {status && (
                     <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -211,8 +338,28 @@ export default function UsersIndex({ users, roles, status }: Props) {
                     </div>
                 )}
 
+                <Card className="border-cyan-500/20">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Buscar usuario</CardTitle>
+                        <CardDescription>
+                            Filtra por nombre, usuario o rol.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="relative">
+                            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                                placeholder="Ej. supervisor, proveedor_demo"
+                                className="pl-9"
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
+
                 <div className="grid gap-4">
-                    {users.map((user) => (
+                    {filteredUsers.map((user) => (
                         <EditableUserCard
                             key={user.id}
                             user={user}
@@ -221,11 +368,11 @@ export default function UsersIndex({ users, roles, status }: Props) {
                         />
                     ))}
 
-                    {users.length === 0 && (
+                    {filteredUsers.length === 0 && (
                         <Card>
                             <CardContent>
                                 <p className="py-2 text-sm text-muted-foreground">
-                                    No hay usuarios registrados.
+                                    No hay resultados para la busqueda actual.
                                 </p>
                             </CardContent>
                         </Card>

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,9 +49,25 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        Auth::logout();
+        $provider = $user->provider()->withTrashed()->first();
+        $hasProviderOrders = $provider?->orders()->withTrashed()->exists() ?? false;
 
-        $user->delete();
+        if ($hasProviderOrders) {
+            return to_route('profile.edit')->withErrors([
+                'accountDeletion' => 'No puedes eliminar tu cuenta porque tu proveedor tiene pedidos registrados.',
+            ]);
+        }
+
+        DB::transaction(function () use ($user, $provider): void {
+            if ($provider !== null) {
+                $provider->providerProducts()->delete();
+                $provider->delete();
+            }
+
+            $user->delete();
+        });
+
+        Auth::logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

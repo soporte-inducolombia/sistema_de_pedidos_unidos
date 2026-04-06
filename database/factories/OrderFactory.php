@@ -24,6 +24,7 @@ class OrderFactory extends Factory
     {
         return [
             'public_id' => (string) Str::uuid(),
+            'order_number' => null,
             'provider_id' => Provider::factory(),
             'customer_email' => fake()->safeEmail(),
             'status' => OrderStatus::PENDING,

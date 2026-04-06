@@ -10,6 +10,7 @@ use App\Models\Provider;
 use App\Models\ProviderProduct;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,7 +20,7 @@ class ProviderProductManagementController extends Controller
     public function index(Request $request): Response
     {
         $assignments = ProviderProduct::query()
-            ->with(['provider.user:id,email', 'product.category:id,name'])
+            ->with(['provider.user:id,email', 'product'])
             ->orderByDesc('updated_at')
             ->get()
             ->map(fn (ProviderProduct $providerProduct): array => [
@@ -29,11 +30,10 @@ class ProviderProductManagementController extends Controller
                 'provider_email' => $providerProduct->provider?->user?->email,
                 'product_id' => $providerProduct->product_id,
                 'product_name' => $providerProduct->product?->name,
-                'product_sku' => $providerProduct->product?->sku,
-                'product_original_price' => $providerProduct->product?->original_price,
-                'category_name' => $providerProduct->product?->category?->name,
-                'discount_type' => $providerProduct->discount_type?->value,
-                'discount_value' => (string) $providerProduct->discount_value,
+                'product_code' => $providerProduct->product?->code,
+                'product_barcode' => $providerProduct->product?->barcode,
+                'product_original_price' => (string) $providerProduct->product?->original_price,
+                'discount_percent' => (string) $providerProduct->discount_value,
                 'special_price' => (string) $providerProduct->special_price,
                 'is_active' => $providerProduct->is_active,
             ])
@@ -54,15 +54,14 @@ class ProviderProductManagementController extends Controller
             ->all();
 
         $products = Product::query()
-            ->with('category:id,name')
             ->where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'category_id', 'sku', 'name', 'original_price', 'is_active'])
+            ->get(['id', 'code', 'barcode', 'name', 'original_price', 'is_active'])
             ->map(fn (Product $product): array => [
                 'id' => $product->id,
                 'name' => $product->name,
-                'sku' => $product->sku,
-                'category_name' => $product->category?->name,
+                'code' => $product->code,
+                'barcode' => $product->barcode,
                 'original_price' => (string) $product->original_price,
             ])
             ->values()
@@ -79,12 +78,16 @@ class ProviderProductManagementController extends Controller
     public function store(ProviderProductUpsertRequest $request): RedirectResponse
     {
         $validated = $request->validated();
-        $specialPrice = $this->resolveSpecialPrice($validated);
+        $productIds = $this->resolveProductIds($validated);
 
-        ProviderProduct::query()->create([
-            ...$validated,
-            'special_price' => $specialPrice,
-        ]);
+        if (count($productIds) > 1) {
+            $this->upsertAssignmentsForMultipleProducts($validated, $productIds);
+
+            return to_route('admin.provider-products.index')
+                ->with('status', sprintf('Se crearon %d asignaciones correctamente.', count($productIds)));
+        }
+
+        $this->upsertAssignment($validated, null, $productIds[0] ?? null);
 
         return to_route('admin.provider-products.index')->with('status', 'Asignacion creada correctamente.');
     }
@@ -92,12 +95,7 @@ class ProviderProductManagementController extends Controller
     public function update(ProviderProductUpsertRequest $request, ProviderProduct $providerProduct): RedirectResponse
     {
         $validated = $request->validated();
-        $specialPrice = $this->resolveSpecialPrice($validated);
-
-        $providerProduct->update([
-            ...$validated,
-            'special_price' => $specialPrice,
-        ]);
+        $this->upsertAssignment($validated, $providerProduct);
 
         return to_route('admin.provider-products.index')->with('status', 'Asignacion actualizada correctamente.');
     }
@@ -110,38 +108,202 @@ class ProviderProductManagementController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      */
-    private function resolveSpecialPrice(array $validated): float
+    private function upsertAssignment(
+        array $validated,
+        ?ProviderProduct $providerProduct = null,
+        ?int $forcedProductId = null,
+    ): void {
+        DB::transaction(function () use ($validated, $providerProduct, $forcedProductId): void {
+            $resolvedProductId = $forcedProductId ?? (int) $validated['product_id'];
+            $product = Product::query()->lockForUpdate()->findOrFail($resolvedProductId);
+
+            $originalPrice = isset($validated['original_price'])
+                ? (float) $validated['original_price']
+                : (float) $product->original_price;
+            [$discountPercent, $specialPrice] = $this->resolvePricingValues($originalPrice, $validated);
+
+            $product->update([
+                'original_price' => $originalPrice,
+            ]);
+
+            $payload = [
+                'provider_id' => (int) $validated['provider_id'],
+                'product_id' => $product->id,
+                'discount_type' => DiscountType::PERCENT->value,
+                'discount_value' => $discountPercent,
+                'special_price' => $specialPrice,
+                'is_active' => (bool) $validated['is_active'],
+            ];
+
+            if ($providerProduct === null) {
+                $existingAssignment = ProviderProduct::query()
+                    ->withTrashed()
+                    ->where('provider_id', (int) $validated['provider_id'])
+                    ->where('product_id', $product->id)
+                    ->first();
+
+                if ($existingAssignment !== null) {
+                    if ($existingAssignment->trashed()) {
+                        $existingAssignment->restore();
+                    }
+
+                    $existingAssignment->update($payload);
+                } else {
+                    ProviderProduct::query()->create($payload);
+                }
+            } else {
+                $providerProduct->update($payload);
+            }
+
+            $this->syncSpecialPricesForProduct(
+                $product->id,
+                $originalPrice,
+                $providerProduct?->id,
+            );
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @param  array<int, int>  $productIds
+     */
+    private function upsertAssignmentsForMultipleProducts(array $validated, array $productIds): void
     {
-        $product = Product::query()->findOrFail((int) $validated['product_id']);
+        DB::transaction(function () use ($validated, $productIds): void {
+            $providerId = (int) $validated['provider_id'];
+            $isActive = (bool) $validated['is_active'];
 
-        $originalPrice = (float) $product->original_price;
-        $discountType = (string) $validated['discount_type'];
-        $discountValue = (float) $validated['discount_value'];
+            $products = Product::query()
+                ->lockForUpdate()
+                ->whereIn('id', $productIds)
+                ->get()
+                ->keyBy('id');
 
-        if ($discountType === DiscountType::PERCENT->value) {
-            if ($discountValue > 100) {
-                throw ValidationException::withMessages([
-                    'discount_value' => 'El descuento en porcentaje no puede ser mayor a 100.',
-                ]);
+            foreach ($productIds as $productId) {
+                /** @var Product $product */
+                $product = $products->get($productId);
+
+                if ($product === null) {
+                    continue;
+                }
+
+                $originalPrice = (float) $product->original_price;
+                [$discountPercent, $specialPrice] = $this->resolvePricingValues($originalPrice, $validated);
+
+                $payload = [
+                    'provider_id' => $providerId,
+                    'product_id' => $product->id,
+                    'discount_type' => DiscountType::PERCENT->value,
+                    'discount_value' => $discountPercent,
+                    'special_price' => $specialPrice,
+                    'is_active' => $isActive,
+                ];
+
+                $existingAssignment = ProviderProduct::query()
+                    ->withTrashed()
+                    ->where('provider_id', $providerId)
+                    ->where('product_id', $product->id)
+                    ->first();
+
+                if ($existingAssignment !== null) {
+                    if ($existingAssignment->trashed()) {
+                        $existingAssignment->restore();
+                    }
+
+                    $existingAssignment->update($payload);
+                } else {
+                    ProviderProduct::query()->create($payload);
+                }
             }
+        });
+    }
 
-            return round($originalPrice * ((100 - $discountValue) / 100), 2);
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<int, int>
+     */
+    private function resolveProductIds(array $validated): array
+    {
+        if (array_key_exists('product_ids', $validated) && is_array($validated['product_ids'])) {
+            return array_values(array_filter(array_unique(array_map(
+                static fn (mixed $productId): int => (int) $productId,
+                $validated['product_ids'],
+            )), static fn (int $productId): bool => $productId > 0));
         }
 
-        if ($discountType === DiscountType::FIXED->value) {
-            if ($discountValue > $originalPrice) {
-                throw ValidationException::withMessages([
-                    'discount_value' => 'El descuento fijo no puede superar el precio original del producto.',
-                ]);
-            }
-
-            return round(max(0, $originalPrice - $discountValue), 2);
+        if (isset($validated['product_id'])) {
+            return [(int) $validated['product_id']];
         }
 
-        throw ValidationException::withMessages([
-            'discount_type' => 'Tipo de descuento invalido.',
-        ]);
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{0: float, 1: float}
+     */
+    private function resolvePricingValues(float $originalPrice, array $validated): array
+    {
+        $discountValue = $validated['discount_value'] ?? null;
+        $specialPriceInput = $validated['special_price'] ?? null;
+
+        if ($discountValue !== null) {
+            $discountPercent = (float) $discountValue;
+            $specialPrice = $this->resolveSpecialPrice($originalPrice, $discountPercent);
+
+            return [$discountPercent, $specialPrice];
+        }
+
+        if ($specialPriceInput === null) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'Debes indicar descuento en % o precio especial.',
+            ]);
+        }
+
+        $specialPrice = round((float) $specialPriceInput, 2);
+        $discountPercent = $this->resolveDiscountPercent($originalPrice, $specialPrice);
+
+        return [$discountPercent, $specialPrice];
+    }
+
+    private function resolveSpecialPrice(float $originalPrice, float $discountPercent): float
+    {
+        if ($discountPercent > 100) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'El descuento en porcentaje no puede ser mayor a 100.',
+            ]);
+        }
+
+        return round($originalPrice * ((100 - $discountPercent) / 100), 2);
+    }
+
+    private function resolveDiscountPercent(float $originalPrice, float $specialPrice): float
+    {
+        if ($specialPrice > $originalPrice) {
+            throw ValidationException::withMessages([
+                'special_price' => 'El precio especial no puede ser mayor al precio original.',
+            ]);
+        }
+
+        return round((($originalPrice - $specialPrice) / $originalPrice) * 100, 2);
+    }
+
+    private function syncSpecialPricesForProduct(int $productId, float $originalPrice, ?int $exceptProviderProductId = null): void
+    {
+        $query = ProviderProduct::query()->where('product_id', $productId);
+
+        if ($exceptProviderProductId !== null) {
+            $query->whereKeyNot($exceptProviderProductId);
+        }
+
+        $query->get()->each(function (ProviderProduct $providerProduct) use ($originalPrice): void {
+            $discountPercent = (float) $providerProduct->discount_value;
+            $providerProduct->update([
+                'discount_type' => DiscountType::PERCENT->value,
+                'special_price' => $this->resolveSpecialPrice($originalPrice, $discountPercent),
+            ]);
+        });
     }
 }

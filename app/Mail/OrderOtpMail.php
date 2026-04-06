@@ -12,14 +12,12 @@ class OrderOtpMail extends Mailable
 {
     use Queueable;
 
-    public function __construct(public Order $order, public string $code)
-    {
-    }
+    public function __construct(public Order $order, public string $code) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Codigo de verificacion de pedido '.$this->order->public_id,
+            subject: 'Codigo OTP para confirmar Orden Nro '.$this->orderNumber().' | UNIDOS',
         );
     }
 
@@ -27,6 +25,14 @@ class OrderOtpMail extends Mailable
     {
         return new Content(
             view: 'emails.orders.otp-code',
+            with: [
+                'orderNumber' => $this->orderNumber(),
+            ],
         );
+    }
+
+    private function orderNumber(): int
+    {
+        return $this->order->order_number ?? $this->order->id;
     }
 }

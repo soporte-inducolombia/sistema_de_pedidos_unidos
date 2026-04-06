@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ProductUpsertRequest;
-use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,15 +15,13 @@ class ProductManagementController extends Controller
     public function index(Request $request): Response
     {
         $products = Product::query()
-            ->with(['category:id,name'])
             ->withCount('providerProducts')
             ->orderBy('name')
             ->get()
             ->map(fn (Product $product): array => [
                 'id' => $product->id,
-                'category_id' => $product->category_id,
-                'category_name' => $product->category?->name,
-                'sku' => $product->sku,
+                'code' => $product->code,
+                'barcode' => $product->barcode,
                 'name' => $product->name,
                 'description' => $product->description,
                 'original_price' => (string) $product->original_price,
@@ -34,20 +31,8 @@ class ProductManagementController extends Controller
             ->values()
             ->all();
 
-        $categories = Category::query()
-            ->orderBy('name')
-            ->get(['id', 'name', 'is_active'])
-            ->map(fn (Category $category): array => [
-                'id' => $category->id,
-                'name' => $category->name,
-                'is_active' => $category->is_active,
-            ])
-            ->values()
-            ->all();
-
         return Inertia::render('admin/products/index', [
             'products' => $products,
-            'categories' => $categories,
             'status' => $request->session()->get('status'),
         ]);
     }

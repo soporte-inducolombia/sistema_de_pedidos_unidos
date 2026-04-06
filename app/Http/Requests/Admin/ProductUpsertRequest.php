@@ -28,8 +28,8 @@ class ProductUpsertRequest extends FormRequest
         $product = $this->route('product');
 
         return [
-            'category_id' => ['required', 'integer', Rule::exists('categories', 'id')],
-            'sku' => ['required', 'string', 'max:50', Rule::unique('products', 'sku')->ignore($product)],
+            'code' => ['required', 'string', 'max:50', Rule::unique('products', 'code')->ignore($product)],
+            'barcode' => ['required', 'string', 'max:120', Rule::unique('products', 'barcode')->ignore($product)],
             'name' => ['required', 'string', 'max:180'],
             'description' => ['nullable', 'string', 'max:1000'],
             'original_price' => ['required', 'numeric', 'min:0.01', 'max:9999999999.99'],
@@ -39,12 +39,14 @@ class ProductUpsertRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $sku = $this->input('sku');
+        $code = $this->input('code');
+        $barcode = $this->input('barcode');
         $name = $this->input('name');
         $description = $this->input('description');
 
         $this->merge([
-            'sku' => is_string($sku) ? mb_strtoupper(trim($sku)) : $sku,
+            'code' => is_string($code) ? mb_strtoupper(trim($code)) : $code,
+            'barcode' => is_string($barcode) ? trim($barcode) : $barcode,
             'name' => is_string($name) ? trim($name) : $name,
             'description' => is_string($description) ? trim($description) : $description,
             'is_active' => filter_var($this->input('is_active', true), FILTER_VALIDATE_BOOLEAN),

@@ -13,14 +13,12 @@ class OrderExcelForOrganizerMail extends Mailable
 {
     use Queueable;
 
-    public function __construct(public Order $order, public string $excelPath)
-    {
-    }
+    public function __construct(public Order $order, public string $excelPath) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Pedido confirmado para control UNIDOS '.$this->order->public_id,
+            subject: 'Orden Nro '.$this->orderNumber().' confirmada | Control UNIDOS',
         );
     }
 
@@ -28,6 +26,9 @@ class OrderExcelForOrganizerMail extends Mailable
     {
         return new Content(
             view: 'emails.orders.organizer',
+            with: [
+                'orderNumber' => $this->orderNumber(),
+            ],
         );
     }
 
@@ -35,8 +36,13 @@ class OrderExcelForOrganizerMail extends Mailable
     {
         return [
             Attachment::fromStorageDisk('local', $this->excelPath)
-                ->as('pedido-'.$this->order->public_id.'.xlsx')
+                ->as('orden-nro-'.$this->orderNumber().'.xlsx')
                 ->withMime('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
         ];
+    }
+
+    private function orderNumber(): int
+    {
+        return $this->order->order_number ?? $this->order->id;
     }
 }

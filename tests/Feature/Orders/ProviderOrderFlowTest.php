@@ -8,7 +8,6 @@ use App\Jobs\GenerateAndSendOrderExcelToOrganizerJob;
 use App\Jobs\SendOrderOtpMailJob;
 use App\Jobs\SendOrderSummaryToCustomerJob;
 use App\Jobs\SendOrderSummaryToProviderJob;
-use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderOtp;
 use App\Models\Product;
@@ -33,13 +32,10 @@ class ProviderOrderFlowTest extends TestCase
             'user_id' => User::factory()->create()->id,
         ]);
 
-        $category = Category::factory()->create();
         $productA = Product::factory()->create([
-            'category_id' => $category->id,
             'original_price' => 100,
         ]);
         $productB = Product::factory()->create([
-            'category_id' => $category->id,
             'original_price' => 50,
         ]);
 
@@ -59,6 +55,7 @@ class ProviderOrderFlowTest extends TestCase
 
         $response = $this->actingAs($provider->user)->postJson(route('provider.orders.store'), [
             'customer_email' => 'cliente@example.com',
+            'customer_signature' => $this->customerSignature(),
             'items' => [
                 ['product_id' => $productA->id, 'quantity' => 2],
                 ['product_id' => $productB->id, 'quantity' => 1],
@@ -74,6 +71,83 @@ class ProviderOrderFlowTest extends TestCase
         $this->assertDatabaseCount('order_otps', 1);
 
         Queue::assertPushed(SendOrderOtpMailJob::class, 1);
+    }
+
+    public function test_order_numbers_are_assigned_sequentially_per_provider(): void
+    {
+        Queue::fake();
+
+        $provider = Provider::factory()->create([
+            'user_id' => User::factory()->create()->id,
+        ]);
+
+        $product = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+
+        ProviderProduct::factory()->create([
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'special_price' => 90,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($provider->user)->postJson(route('provider.orders.store'), [
+            'customer_email' => 'cliente1@example.com',
+            'customer_signature' => $this->customerSignature(),
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 1],
+            ],
+        ])->assertCreated();
+
+        $this->actingAs($provider->user)->postJson(route('provider.orders.store'), [
+            'customer_email' => 'cliente2@example.com',
+            'customer_signature' => $this->customerSignature(),
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 2],
+            ],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('orders', [
+            'provider_id' => $provider->id,
+            'customer_email' => 'cliente1@example.com',
+            'order_number' => 1,
+        ]);
+
+        $this->assertDatabaseHas('orders', [
+            'provider_id' => $provider->id,
+            'customer_email' => 'cliente2@example.com',
+            'order_number' => 2,
+        ]);
+    }
+
+    public function test_provider_cannot_create_order_without_customer_signature(): void
+    {
+        $provider = Provider::factory()->create([
+            'user_id' => User::factory()->create()->id,
+        ]);
+
+        $product = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+
+        ProviderProduct::factory()->create([
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'special_price' => 90,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($provider->user)->postJson(route('provider.orders.store'), [
+            'customer_email' => 'cliente@example.com',
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 1],
+            ],
+        ]);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['customer_signature']);
     }
 
     public function test_provider_can_confirm_order_with_valid_otp_and_dispatch_event(): void
@@ -185,5 +259,55 @@ class ProviderOrderFlowTest extends TestCase
             'attempts' => 1,
             'verified_at' => null,
         ]);
+    }
+
+    public function test_provider_can_resend_otp_when_order_is_expired(): void
+    {
+        Queue::fake();
+
+        $provider = Provider::factory()->create([
+            'user_id' => User::factory()->create()->id,
+        ]);
+
+        $order = Order::factory()->create([
+            'provider_id' => $provider->id,
+            'status' => OrderStatus::EXPIRED,
+        ]);
+
+        $otp = OrderOtp::factory()->create([
+            'order_id' => $order->id,
+            'code_hash' => Hash::make('123456'),
+            'expires_at' => now()->subMinutes(1),
+            'attempts' => 3,
+            'max_attempts' => 5,
+            'resend_count' => 0,
+            'last_sent_at' => now()->subMinutes(2),
+        ]);
+
+        $response = $this->actingAs($provider->user)->postJson(
+            route('provider.orders.resend-otp', $order),
+        );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('message', 'OTP reenviado al correo del cliente.');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'status' => OrderStatus::PENDING->value,
+        ]);
+
+        $otp->refresh();
+
+        $this->assertSame(0, $otp->attempts);
+        $this->assertSame(1, $otp->resend_count);
+        $this->assertTrue($otp->expires_at !== null && $otp->expires_at->isFuture());
+
+        Queue::assertPushed(SendOrderOtpMailJob::class, 1);
+    }
+
+    private function customerSignature(): string
+    {
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5xLwAAAABJRU5ErkJggg==';
     }
 }

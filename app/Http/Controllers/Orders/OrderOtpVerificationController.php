@@ -160,7 +160,7 @@ class OrderOtpVerificationController extends Controller
             ? 'Orden confirmada correctamente.'
             : 'Orden confirmada, pero no fue posible despachar correos de confirmacion en este momento.';
 
-        return to_route('dashboard')->with('status', $statusMessage);
+        return to_route('provider.orders.index')->with('status', $statusMessage);
     }
 
     public function resend(Request $request, Order $order, OrderOtpService $otpService): JsonResponse|RedirectResponse
@@ -179,9 +179,9 @@ class OrderOtpVerificationController extends Controller
 
             $this->ensureProviderOrder($lockedOrder, $provider);
 
-            if ($lockedOrder->status !== OrderStatus::PENDING) {
+            if (! in_array($lockedOrder->status, [OrderStatus::PENDING, OrderStatus::EXPIRED], true)) {
                 throw ValidationException::withMessages([
-                    'order' => 'Solo se puede reenviar OTP en ordenes pendientes.',
+                    'order' => 'Solo se puede reenviar OTP en ordenes pendientes o expiradas.',
                 ]);
             }
 
@@ -227,9 +227,9 @@ class OrderOtpVerificationController extends Controller
 
             $this->ensureProviderOrder($lockedOrder, $provider);
 
-            if ($lockedOrder->status !== OrderStatus::PENDING) {
+            if (! in_array($lockedOrder->status, [OrderStatus::PENDING, OrderStatus::EXPIRED], true)) {
                 throw ValidationException::withMessages([
-                    'order' => 'Solo se puede reenviar OTP en ordenes pendientes.',
+                    'order' => 'Solo se puede reenviar OTP en ordenes pendientes o expiradas.',
                 ]);
             }
 
@@ -255,6 +255,10 @@ class OrderOtpVerificationController extends Controller
                 'last_sent_at' => now(),
             ])->save();
 
+            $lockedOrder->forceFill([
+                'status' => OrderStatus::PENDING,
+            ])->save();
+
             return $lockedOrder->fresh('otp');
         });
 
@@ -268,7 +272,10 @@ class OrderOtpVerificationController extends Controller
             ]);
         }
 
-        return to_route('dashboard')->with('status', 'OTP reenviado al correo del cliente.');
+        return to_route('provider.orders.index')->with([
+            'status' => 'OTP reenviado al correo del cliente.',
+            'pending_otp_order_public_id' => $updatedOrder->public_id,
+        ]);
     }
 
     private function resolveProvider(Request $request): Provider

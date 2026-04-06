@@ -1,10 +1,11 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     Boxes,
+    ClipboardSignature,
     LayoutGrid,
     PackageSearch,
     ShieldCheck,
-    Tags,
+    Trash2,
     Users,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -19,12 +20,12 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { index as adminCategoriesIndex } from '@/routes/admin/categories';
+import { dashboard } from '@/routes';
 import { index as adminProductsIndex } from '@/routes/admin/products';
 import { index as adminProviderProductsIndex } from '@/routes/admin/provider-products';
 import { index as adminRolesIndex } from '@/routes/admin/roles';
 import { index as adminUsersIndex } from '@/routes/admin/users';
-import { dashboard } from '@/routes';
+import { index as providerOrdersIndex } from '@/routes/provider/orders';
 import type { NavItem } from '@/types';
 
 export function AppSidebar() {
@@ -39,12 +40,6 @@ export function AppSidebar() {
     ];
 
     if (auth.user.role === 'admin') {
-        mainNavItems.push({
-            title: 'Categorias',
-            href: adminCategoriesIndex(),
-            icon: Tags,
-        });
-
         mainNavItems.push({
             title: 'Productos',
             href: adminProductsIndex(),
@@ -67,6 +62,20 @@ export function AppSidebar() {
             title: 'Roles',
             href: adminRolesIndex(),
             icon: ShieldCheck,
+        });
+
+        mainNavItems.push({
+            title: 'Papelera',
+            href: '/admin/recycle-bin',
+            icon: Trash2,
+        });
+    }
+
+    if (auth.user.role === 'provider') {
+        mainNavItems.push({
+            title: 'Pedidos',
+            href: providerOrdersIndex(),
+            icon: ClipboardSignature,
         });
     }
 

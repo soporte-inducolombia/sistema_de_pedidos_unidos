@@ -2,13 +2,14 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Resumen del pedido</title>
+    <title>Orden Nro {{ $orderNumber }} confirmada</title>
 </head>
 <body>
 <p>Hola {{ $recipientType }},</p>
-<p>El pedido <strong>{{ $order->public_id }}</strong> fue confirmado exitosamente.</p>
+<p>La <strong>Orden Nro {{ $orderNumber }}</strong> fue confirmada exitosamente en el sistema.</p>
 <p>Proveedor: <strong>{{ $order->provider?->company_name }}</strong></p>
 <p>Cliente: <strong>{{ $order->customer_email }}</strong></p>
+<p>Fecha de confirmacion: <strong>{{ $order->confirmed_at?->format('Y-m-d H:i') ?? 'Sin fecha registrada' }}</strong></p>
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
     <thead>
     <tr>
@@ -31,7 +32,8 @@
     @endforeach
     </tbody>
 </table>
-<p>Total pedido: <strong>{{ number_format((float) $order->subtotal_special, 2) }}</strong></p>
+<p>Total de la orden: <strong>{{ number_format((float) $order->subtotal_special, 2) }}</strong></p>
 <p>Descuento total aplicado: <strong>{{ number_format((float) $order->total_discount, 2) }}</strong></p>
+<p>Gracias por usar UNIDOS.</p>
 </body>
 </html>

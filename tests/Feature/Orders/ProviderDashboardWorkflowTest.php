@@ -3,7 +3,6 @@
 namespace Tests\Feature\Orders;
 
 use App\Enums\OrderStatus;
-use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderOtp;
 use App\Models\Product;
@@ -22,7 +21,7 @@ class ProviderDashboardWorkflowTest extends TestCase
     /**
      * Ensure provider workflow works from dashboard-style form submissions.
      */
-    public function test_provider_can_view_dashboard_with_assigned_products(): void
+    public function test_provider_can_view_dashboard_with_orders_summary_only(): void
     {
         $provider = Provider::factory()->create([
             'user_id' => User::factory()->create([
@@ -44,7 +43,7 @@ class ProviderDashboardWorkflowTest extends TestCase
 
         $response->assertOk();
         $response->assertSee($provider->company_name);
-        $response->assertSee($product->name);
+        $response->assertSee('Gestion de pedidos');
     }
 
     public function test_provider_can_create_order_from_dashboard_and_get_redirect(): void
@@ -57,10 +56,7 @@ class ProviderDashboardWorkflowTest extends TestCase
             ])->id,
         ]);
 
-        $category = Category::factory()->create();
-
         $product = Product::factory()->create([
-            'category_id' => $category->id,
             'original_price' => 120,
         ]);
 
@@ -73,6 +69,7 @@ class ProviderDashboardWorkflowTest extends TestCase
 
         $response = $this->actingAs($provider->user)->post(route('provider.orders.store'), [
             'customer_email' => 'cliente.dashboard@example.com',
+            'customer_signature' => $this->customerSignature(),
             'items' => [
                 [
                     'product_id' => $product->id,
@@ -81,8 +78,9 @@ class ProviderDashboardWorkflowTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect(route('dashboard'));
+        $response->assertRedirect(route('provider.orders.index'));
         $response->assertSessionHas('status');
+        $response->assertSessionHas('pending_otp_order_public_id');
 
         $this->assertDatabaseHas('orders', [
             'provider_id' => $provider->id,
@@ -120,7 +118,7 @@ class ProviderDashboardWorkflowTest extends TestCase
             'code' => '123456',
         ]);
 
-        $confirmResponse->assertRedirect(route('dashboard'));
+        $confirmResponse->assertRedirect(route('provider.orders.index'));
         $this->assertDatabaseHas('orders', [
             'id' => $orderToConfirm->id,
             'status' => OrderStatus::CONFIRMED->value,
@@ -128,7 +126,7 @@ class ProviderDashboardWorkflowTest extends TestCase
 
         $orderToResend = Order::factory()->create([
             'provider_id' => $provider->id,
-            'status' => OrderStatus::PENDING,
+            'status' => OrderStatus::EXPIRED,
         ]);
 
         OrderOtp::factory()->create([
@@ -143,7 +141,17 @@ class ProviderDashboardWorkflowTest extends TestCase
 
         $resendResponse = $this->actingAs($provider->user)->post(route('provider.orders.resend-otp', $orderToResend));
 
-        $resendResponse->assertRedirect(route('dashboard'));
+        $resendResponse->assertRedirect(route('provider.orders.index'));
         $resendResponse->assertSessionHas('status');
+        $resendResponse->assertSessionHas('pending_otp_order_public_id', $orderToResend->public_id);
+        $this->assertDatabaseHas('orders', [
+            'id' => $orderToResend->id,
+            'status' => OrderStatus::PENDING->value,
+        ]);
+    }
+
+    private function customerSignature(): string
+    {
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5xLwAAAABJRU5ErkJggg==';
     }
 }

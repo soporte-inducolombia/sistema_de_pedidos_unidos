@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Models\Order;
 use App\Models\Provider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,7 +28,7 @@ class UserManagementTest extends TestCase
         $response = $this->actingAs($admin)->get(route('admin.users.index'));
 
         $response->assertOk();
-        $response->assertSee($managedUser->email);
+        $response->assertSee($managedUser->username);
     }
 
     public function test_non_admin_users_cannot_access_users_management_page(): void
@@ -41,7 +42,7 @@ class UserManagementTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_admin_can_update_user_name_email_and_role(): void
+    public function test_admin_can_update_user_name_username_and_role(): void
     {
         $admin = User::factory()->create([
             'role' => 'admin',
@@ -53,7 +54,7 @@ class UserManagementTest extends TestCase
 
         $response = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
             'name' => 'Usuario Editado',
-            'email' => 'usuario.editado@example.com',
+            'username' => 'usuario_editado',
             'role' => 'admin',
         ]);
 
@@ -62,7 +63,7 @@ class UserManagementTest extends TestCase
         $this->assertDatabaseHas('users', [
             'id' => $targetUser->id,
             'name' => 'Usuario Editado',
-            'email' => 'usuario.editado@example.com',
+            'username' => 'usuario_editado',
             'role' => 'admin',
         ]);
     }
@@ -80,7 +81,7 @@ class UserManagementTest extends TestCase
         $response = $this->actingAs($admin)->delete(route('admin.users.destroy', $targetUser));
 
         $response->assertRedirect(route('admin.users.index'));
-        $this->assertDatabaseMissing('users', [
+        $this->assertSoftDeleted('users', [
             'id' => $targetUser->id,
         ]);
 
@@ -89,6 +90,33 @@ class UserManagementTest extends TestCase
         $selfDeleteResponse->assertSessionHasErrors('delete');
         $this->assertDatabaseHas('users', [
             'id' => $admin->id,
+        ]);
+    }
+
+    public function test_admin_cannot_delete_user_when_provider_has_orders(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $targetUser = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $provider = Provider::factory()->create([
+            'user_id' => $targetUser->id,
+        ]);
+
+        Order::factory()->create([
+            'provider_id' => $provider->id,
+        ]);
+
+        $response = $this->actingAs($admin)->delete(route('admin.users.destroy', $targetUser));
+
+        $response->assertSessionHasErrors('delete');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $targetUser->id,
         ]);
     }
 
@@ -101,12 +129,12 @@ class UserManagementTest extends TestCase
         $targetUser = User::factory()->create([
             'role' => 'admin',
             'name' => 'Proveedor Demo',
-            'email' => 'proveedor.demo@example.com',
+            'username' => 'proveedor_demo',
         ]);
 
         $promoteResponse = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
             'name' => $targetUser->name,
-            'email' => $targetUser->email,
+            'username' => $targetUser->username,
             'role' => 'provider',
         ]);
 
@@ -123,7 +151,7 @@ class UserManagementTest extends TestCase
 
         $demoteResponse = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
             'name' => $targetUser->name,
-            'email' => $targetUser->email,
+            'username' => $targetUser->username,
             'role' => 'admin',
         ]);
 
@@ -136,7 +164,7 @@ class UserManagementTest extends TestCase
 
         $reactivateResponse = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
             'name' => $targetUser->name,
-            'email' => $targetUser->email,
+            'username' => $targetUser->username,
             'role' => 'provider',
         ]);
 

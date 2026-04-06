@@ -55,12 +55,13 @@ class ProviderProductManagementTest extends TestCase
         $storeResponse = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
             'provider_id' => $provider->id,
             'product_id' => $product->id,
-            'discount_type' => 'percent',
+            'original_price' => '100',
             'discount_value' => '20',
             'is_active' => true,
         ]);
 
-        $storeResponse->assertRedirect(route('admin.provider-products.index'));
+        $storeResponse->assertStatus(302);
+        $storeResponse->assertSessionHasNoErrors();
 
         $assignment = ProviderProduct::query()->where('provider_id', $provider->id)->where('product_id', $product->id)->firstOrFail();
 
@@ -72,8 +73,8 @@ class ProviderProductManagementTest extends TestCase
         $updateResponse = $this->actingAs($admin)->patch(route('admin.provider-products.update', $assignment), [
             'provider_id' => $provider->id,
             'product_id' => $product->id,
-            'discount_type' => 'fixed',
-            'discount_value' => '15',
+            'original_price' => '120',
+            'discount_value' => '25',
             'is_active' => false,
         ]);
 
@@ -81,16 +82,62 @@ class ProviderProductManagementTest extends TestCase
 
         $this->assertDatabaseHas('provider_products', [
             'id' => $assignment->id,
-            'discount_type' => 'fixed',
-            'special_price' => 85,
+            'discount_type' => 'percent',
+            'special_price' => 90,
             'is_active' => false,
+        ]);
+
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'original_price' => 120,
         ]);
 
         $deleteResponse = $this->actingAs($admin)->delete(route('admin.provider-products.destroy', $assignment));
         $deleteResponse->assertRedirect(route('admin.provider-products.index'));
 
-        $this->assertDatabaseMissing('provider_products', [
+        $this->assertSoftDeleted('provider_products', [
             'id' => $assignment->id,
+        ]);
+    }
+
+    public function test_admin_can_recreate_deleted_provider_product_assignment_without_unique_conflict(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $product = Product::factory()->create([
+            'original_price' => 200,
+        ]);
+
+        $assignment = ProviderProduct::factory()->create([
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'discount_value' => 10,
+            'special_price' => 180,
+        ]);
+
+        $this->actingAs($admin)->delete(route('admin.provider-products.destroy', $assignment));
+
+        $storeResponse = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'original_price' => '200',
+            'discount_value' => '25',
+            'is_active' => true,
+        ]);
+
+        $storeResponse->assertStatus(302);
+        $storeResponse->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('provider_products', [
+            'id' => $assignment->id,
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'discount_value' => 25,
+            'special_price' => 150,
+            'deleted_at' => null,
         ]);
     }
 
@@ -108,12 +155,144 @@ class ProviderProductManagementTest extends TestCase
         $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
             'provider_id' => $provider->id,
             'product_id' => $product->id,
-            'discount_type' => 'percent',
+            'original_price' => '100',
             'discount_value' => '150',
             'is_active' => true,
         ]);
 
         $response->assertSessionHasErrors('discount_value');
+
+        $this->assertDatabaseMissing('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+        ]);
+    }
+
+    public function test_admin_can_create_assignment_with_special_price_and_derive_discount_percent(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $product = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'original_price' => '100',
+            'special_price' => '70',
+            'is_active' => true,
+        ]);
+
+        $response->assertRedirect(route('admin.provider-products.index'));
+
+        $this->assertDatabaseHas('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'discount_type' => 'percent',
+            'discount_value' => 30,
+            'special_price' => 70,
+        ]);
+    }
+
+    public function test_admin_can_create_multiple_assignments_in_single_request(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $firstProduct = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+        $secondProduct = Product::factory()->create([
+            'original_price' => 250,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_ids' => [$firstProduct->id, $secondProduct->id],
+            'discount_value' => '20',
+            'is_active' => true,
+        ]);
+
+        $response->assertRedirect(route('admin.provider-products.index'));
+        $response->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $firstProduct->id,
+            'discount_type' => 'percent',
+            'discount_value' => 20,
+            'special_price' => 80,
+        ]);
+
+        $this->assertDatabaseHas('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $secondProduct->id,
+            'discount_type' => 'percent',
+            'discount_value' => 20,
+            'special_price' => 200,
+        ]);
+    }
+
+    public function test_admin_cannot_use_special_price_for_multiple_assignments(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $firstProduct = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+        $secondProduct = Product::factory()->create([
+            'original_price' => 120,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_ids' => [$firstProduct->id, $secondProduct->id],
+            'special_price' => '90',
+            'is_active' => true,
+        ]);
+
+        $response->assertSessionHasErrors('special_price');
+
+        $this->assertDatabaseMissing('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $firstProduct->id,
+        ]);
+
+        $this->assertDatabaseMissing('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $secondProduct->id,
+        ]);
+    }
+
+    public function test_admin_cannot_create_assignment_when_special_price_is_higher_than_original(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $product = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_id' => $product->id,
+            'original_price' => '100',
+            'special_price' => '150',
+            'is_active' => true,
+        ]);
+
+        $response->assertSessionHasErrors('special_price');
 
         $this->assertDatabaseMissing('provider_products', [
             'provider_id' => $provider->id,

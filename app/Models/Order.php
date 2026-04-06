@@ -9,17 +9,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $guarded = [];
 
     protected function casts(): array
     {
         return [
+            'order_number' => 'integer',
             'status' => OrderStatus::class,
             'subtotal_original' => 'decimal:2',
             'subtotal_special' => 'decimal:2',

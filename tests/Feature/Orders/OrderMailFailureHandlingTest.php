@@ -3,7 +3,6 @@
 namespace Tests\Feature\Orders;
 
 use App\Enums\OrderStatus;
-use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderOtp;
 use App\Models\Product;
@@ -30,9 +29,7 @@ class OrderMailFailureHandlingTest extends TestCase
             'user_id' => User::factory()->create()->id,
         ]);
 
-        $category = Category::factory()->create();
         $product = Product::factory()->create([
-            'category_id' => $category->id,
             'original_price' => 100,
         ]);
 
@@ -45,6 +42,7 @@ class OrderMailFailureHandlingTest extends TestCase
 
         $response = $this->actingAs($provider->user)->postJson(route('provider.orders.store'), [
             'customer_email' => 'cliente@example.com',
+            'customer_signature' => $this->customerSignature(),
             'items' => [
                 ['product_id' => $product->id, 'quantity' => 1],
             ],
@@ -96,5 +94,10 @@ class OrderMailFailureHandlingTest extends TestCase
 
         $this->assertSame($originalCodeHash, $otp->code_hash);
         $this->assertSame($originalResendCount, $otp->resend_count);
+    }
+
+    private function customerSignature(): string
+    {
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5xLwAAAABJRU5ErkJggg==';
     }
 }

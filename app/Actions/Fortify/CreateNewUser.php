@@ -6,6 +6,8 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\User;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 
 class CreateNewUser implements CreatesNewUsers
@@ -21,12 +23,20 @@ class CreateNewUser implements CreatesNewUsers
     {
         Validator::make($input, [
             ...$this->profileRules(),
+            'username' => ['required', 'string', 'max:255', 'alpha_dash', Rule::unique(User::class, 'username')],
             'password' => $this->passwordRules(),
         ])->validate();
+
+        $username = (string) $input['username'];
+
+        if ((bool) config('fortify.lowercase_usernames', true)) {
+            $username = Str::lower($username);
+        }
 
         return User::create([
             'name' => $input['name'],
             'email' => $input['email'],
+            'username' => $username,
             'password' => $input['password'],
         ]);
     }

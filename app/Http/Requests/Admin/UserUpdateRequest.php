@@ -29,7 +29,7 @@ class UserUpdateRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email:rfc', 'max:255', Rule::unique('users', 'email')->ignore($user)],
+            'username' => ['required', 'string', 'max:255', 'alpha_dash', Rule::unique(User::class, 'username')->ignore($user)],
             'role' => ['required', 'string', 'max:50', Rule::exists('roles', 'slug')],
         ];
     }

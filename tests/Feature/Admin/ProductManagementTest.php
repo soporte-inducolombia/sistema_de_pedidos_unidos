@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProviderProduct;
 use App\Models\User;
@@ -49,11 +48,9 @@ class ProductManagementTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $category = Category::factory()->create();
-
         $createResponse = $this->actingAs($admin)->post(route('admin.products.store'), [
-            'category_id' => $category->id,
-            'sku' => 'SKU-PRUEBA-01',
+            'code' => 'COD-PRUEBA-01',
+            'barcode' => '7700000000011',
             'name' => 'Cuaderno pruebas',
             'description' => 'Descripcion inicial',
             'original_price' => '125.90',
@@ -62,11 +59,11 @@ class ProductManagementTest extends TestCase
 
         $createResponse->assertRedirect(route('admin.products.index'));
 
-        $product = Product::query()->where('sku', 'SKU-PRUEBA-01')->firstOrFail();
+        $product = Product::query()->where('code', 'COD-PRUEBA-01')->firstOrFail();
 
         $updateResponse = $this->actingAs($admin)->patch(route('admin.products.update', $product), [
-            'category_id' => $category->id,
-            'sku' => 'SKU-PRUEBA-02',
+            'code' => 'COD-PRUEBA-02',
+            'barcode' => '7700000000012',
             'name' => 'Cuaderno pruebas v2',
             'description' => 'Descripcion actualizada',
             'original_price' => '149.00',
@@ -77,7 +74,8 @@ class ProductManagementTest extends TestCase
 
         $this->assertDatabaseHas('products', [
             'id' => $product->id,
-            'sku' => 'SKU-PRUEBA-02',
+            'code' => 'COD-PRUEBA-02',
+            'barcode' => '7700000000012',
             'name' => 'Cuaderno pruebas v2',
             'is_active' => false,
         ]);
@@ -99,7 +97,7 @@ class ProductManagementTest extends TestCase
         $deleteFreeResponse = $this->actingAs($admin)->delete(route('admin.products.destroy', $freeProduct));
         $deleteFreeResponse->assertRedirect(route('admin.products.index'));
 
-        $this->assertDatabaseMissing('products', [
+        $this->assertSoftDeleted('products', [
             'id' => $freeProduct->id,
         ]);
 

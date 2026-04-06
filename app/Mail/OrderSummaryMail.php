@@ -12,14 +12,12 @@ class OrderSummaryMail extends Mailable
 {
     use Queueable;
 
-    public function __construct(public Order $order, public string $recipientType)
-    {
-    }
+    public function __construct(public Order $order, public string $recipientType) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Resumen de pedido confirmado '.$this->order->public_id,
+            subject: 'Orden Nro '.$this->orderNumber().' confirmada | Resumen UNIDOS',
         );
     }
 
@@ -27,6 +25,14 @@ class OrderSummaryMail extends Mailable
     {
         return new Content(
             view: 'emails.orders.summary',
+            with: [
+                'orderNumber' => $this->orderNumber(),
+            ],
         );
+    }
+
+    private function orderNumber(): int
+    {
+        return $this->order->order_number ?? $this->order->id;
     }
 }

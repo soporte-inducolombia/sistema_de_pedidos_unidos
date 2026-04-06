@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Order;
+use App\Models\Provider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -76,7 +78,9 @@ class ProfileUpdateTest extends TestCase
             ->assertRedirect(route('home'));
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        $this->assertSoftDeleted('users', [
+            'id' => $user->id,
+        ]);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()
@@ -95,5 +99,37 @@ class ProfileUpdateTest extends TestCase
             ->assertRedirect(route('profile.edit'));
 
         $this->assertNotNull($user->fresh());
+    }
+
+    public function test_provider_with_orders_cannot_delete_their_account(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $provider = Provider::factory()->create([
+            'user_id' => $user->id,
+        ]);
+
+        Order::factory()->create([
+            'provider_id' => $provider->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->from(route('profile.edit'))
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasErrors('accountDeletion')
+            ->assertRedirect(route('profile.edit'));
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'deleted_at' => null,
+        ]);
     }
 }

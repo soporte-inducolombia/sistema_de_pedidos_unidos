@@ -9,46 +9,40 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 
 class OrderConfirmedExport implements FromArray, ShouldAutoSize, WithHeadings
 {
-    public function __construct(private readonly Order $order)
-    {
-    }
+    public function __construct(private readonly Order $order) {}
 
     public function headings(): array
     {
         return [
             'Pedido',
             'Proveedor',
-            'Cliente',
-            'SKU',
             'Producto',
-            'Categoria',
+            'Codigo de barras',
+            'Codigo',
+            'Descripcion',
             'Cantidad',
-            'Precio Original Unitario',
-            'Precio Especial Unitario',
-            'Subtotal Original',
-            'Subtotal Especial',
-            'Descuento',
+            'Cliente',
+            'Total',
         ];
     }
 
     public function array(): array
     {
         $rows = [];
+        $orderNumber = $this->order->order_number ?? $this->order->id;
+        $orderTotal = (string) $this->order->subtotal_special;
 
         foreach ($this->order->items as $item) {
             $rows[] = [
-                $this->order->public_id,
+                $orderNumber,
                 $this->order->provider?->company_name,
-                $this->order->customer_email,
-                $item->snapshot_sku,
                 $item->snapshot_product_name,
-                $item->snapshot_category_name,
+                $item->product?->barcode,
+                $item->snapshot_sku,
+                $item->product?->description,
                 $item->quantity,
-                $item->unit_original_price,
-                $item->unit_special_price,
-                $item->line_original_total,
-                $item->line_special_total,
-                bcsub((string) $item->line_original_total, (string) $item->line_special_total, 2),
+                $this->order->customer_email,
+                $orderTotal,
             ];
         }
 

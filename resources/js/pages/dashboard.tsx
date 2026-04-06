@@ -1,4 +1,12 @@
 import { Head, Link, useForm } from '@inertiajs/react';
+import {
+    Building2,
+    CalendarClock,
+    CheckCircle2,
+    Clock3,
+    ClipboardList,
+    PackageSearch,
+} from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 import Heading from '@/components/heading';
@@ -13,26 +21,25 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { index as adminCategoriesIndex } from '@/routes/admin/categories';
+import { dashboard } from '@/routes';
 import { index as adminProductsIndex } from '@/routes/admin/products';
 import { index as adminProviderProductsIndex } from '@/routes/admin/provider-products';
 import { index as adminRolesIndex } from '@/routes/admin/roles';
 import { index as adminUsersIndex } from '@/routes/admin/users';
 import {
+    index as providerOrdersIndex,
     resendOtp,
-    store as storeProviderOrder,
     verifyOtp,
 } from '@/routes/provider/orders';
-import { dashboard } from '@/routes';
 
 type AdminSummary = {
-    categories_count: number;
     products_count: number;
     providers_count: number;
     pending_orders_count: number;
     confirmed_orders_count: number;
     recent_orders: {
         public_id: string;
+        order_number: number | null;
         status: string;
         customer_email: string;
         provider_name: string | null;
@@ -47,19 +54,15 @@ type ProviderWorkspace = {
         company_name: string;
         stand_label: string;
     };
-    products: {
-        id: number;
-        product_id: number;
-        product_name: string | null;
-        sku: string | null;
-        category_name: string | null;
-        original_price: string;
-        special_price: string;
-        discount_type: string | null;
-        discount_value: string;
-    }[];
+    metrics: {
+        products_count: number;
+        pending_orders_count: number;
+        confirmed_orders_count: number;
+        total_savings: number;
+    };
     recent_orders: {
         public_id: string;
+        order_number: number;
         status: string;
         customer_email: string;
         subtotal_special: string;
@@ -77,6 +80,26 @@ type Props = {
     status?: string;
     adminSummary: AdminSummary | null;
     providerWorkspace: ProviderWorkspace | null;
+};
+
+const formatDateTime = (value: string | null): string => {
+    if (value === null) {
+        return 'Sin fecha';
+    }
+
+    return new Date(value).toLocaleString();
+};
+
+const getStatusLabel = (status: string): string => {
+    if (status === 'confirmed') {
+        return 'Confirmado';
+    }
+
+    if (status === 'pending') {
+        return 'Pendiente';
+    }
+
+    return status;
 };
 
 function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders'][number] }) {
@@ -103,32 +126,51 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
         });
     };
 
+    const isConfirmed = order.status === 'confirmed';
+
     return (
-        <Card>
-            <CardHeader>
+        <Card className="overflow-hidden border-slate-200/80 shadow-sm dark:border-slate-800">
+            <CardHeader
+                className={
+                    isConfirmed
+                        ? 'bg-linear-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10'
+                        : 'bg-linear-to-r from-amber-500/10 via-orange-500/10 to-cyan-500/10'
+                }
+            >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                        <CardTitle>Pedido {order.public_id}</CardTitle>
+                        <CardTitle>Orden Nro {order.order_number}</CardTitle>
                         <CardDescription>
                             Cliente: {order.customer_email}
                         </CardDescription>
                     </div>
-                    <Badge
-                        variant={
-                            order.status === 'confirmed' ? 'default' : 'outline'
-                        }
-                    >
-                        {order.status}
+                    <Badge variant={isConfirmed ? 'default' : 'outline'}>
+                        {getStatusLabel(order.status)}
                     </Badge>
                 </div>
             </CardHeader>
             <CardContent className="space-y-3">
-                <div className="text-sm text-muted-foreground">
-                    Total: ${order.subtotal_special} | Ahorro: ${order.total_discount}
+                <div className="grid gap-2 text-sm md:grid-cols-2">
+                    <div className="rounded-md border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50">
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="font-medium">${order.subtotal_special}</p>
+                    </div>
+                    <div className="rounded-md border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50">
+                        <p className="text-xs text-muted-foreground">Ahorro</p>
+                        <p className="font-medium">${order.total_discount}</p>
+                    </div>
+                    <div className="rounded-md border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50 md:col-span-2">
+                        <p className="text-xs text-muted-foreground">Creado</p>
+                        <p className="font-medium">{formatDateTime(order.created_at)}</p>
+                    </div>
                 </div>
 
                 {order.status === 'pending' && (
                     <>
+                        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                            Expira: {formatDateTime(order.otp_expires_at)}
+                        </div>
+
                         <form onSubmit={submitVerification} className="space-y-2">
                             <label className="text-sm font-medium" htmlFor={`otp-${order.public_id}`}>
                                 Codigo OTP
@@ -146,6 +188,7 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
 
                             <div className="flex flex-wrap items-center gap-2">
                                 <Button type="submit" disabled={verifyForm.processing}>
+                                    <CheckCircle2 />
                                     Confirmar pedido
                                 </Button>
                                 <Button
@@ -157,6 +200,7 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
                                         !order.can_resend_otp
                                     }
                                 >
+                                    <Clock3 />
                                     Reenviar OTP
                                 </Button>
                             </div>
@@ -167,77 +211,40 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
                         </div>
                     </>
                 )}
+
+                {isConfirmed && (
+                    <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-200">
+                        Confirmado: {formatDateTime(order.confirmed_at)}
+                    </div>
+                )}
             </CardContent>
         </Card>
     );
 }
 
 export default function Dashboard({ status, adminSummary, providerWorkspace }: Props) {
-    const [quantities, setQuantities] = useState<Record<number, number>>({});
-    const [orderItemsError, setOrderItemsError] = useState<string | null>(null);
+    const [orderFilter, setOrderFilter] = useState<'all' | 'pending' | 'confirmed'>('all');
 
-    const orderForm = useForm<{
-        customer_email: string;
-        items: {
-            product_id: number;
-            quantity: number;
-        }[];
-    }>({
-        customer_email: '',
-        items: [],
-    });
-
-    const selectedProducts = useMemo(() => {
+    const filteredRecentOrders = useMemo(() => {
         if (providerWorkspace === null) {
             return [];
         }
 
-        return providerWorkspace.products
-            .map((product) => ({
-                ...product,
-                quantity: quantities[product.product_id] ?? 0,
-            }))
-            .filter((product) => product.quantity > 0);
-    }, [providerWorkspace, quantities]);
-
-    const estimatedTotal = selectedProducts.reduce((total, product) => {
-        return total + Number(product.special_price) * product.quantity;
-    }, 0);
-
-    const handleQuantityChange = (productId: number, quantity: number) => {
-        setQuantities((current) => ({
-            ...current,
-            [productId]: Number.isNaN(quantity) ? 0 : Math.max(0, quantity),
-        }));
-    };
-
-    const submitOrder = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-
-        const items = selectedProducts.map((product) => ({
-            product_id: product.product_id,
-            quantity: product.quantity,
-        }));
-
-        if (items.length === 0) {
-            setOrderItemsError('Debes seleccionar al menos un producto con cantidad mayor a cero.');
-            return;
+        if (orderFilter === 'all') {
+            return providerWorkspace.recent_orders;
         }
 
-        setOrderItemsError(null);
-
-        orderForm.transform((data) => ({
-            ...data,
-            items,
-        }));
-
-        orderForm.post(storeProviderOrder.url(), {
-            preserveScroll: true,
-            onSuccess: () => {
-                orderForm.reset('customer_email', 'items');
-                setQuantities({});
-            },
+        return providerWorkspace.recent_orders.filter((order) => {
+            return order.status === orderFilter;
         });
+    }, [orderFilter, providerWorkspace]);
+
+
+    const providerStats = providerWorkspace?.metrics ?? {
+        products_count: 0,
+        pending_orders_count: 0,
+        confirmed_orders_count: 0,
+        total_savings: 0,
     };
 
     return (
@@ -258,13 +265,7 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
 
                 {adminSummary !== null && (
                     <div className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-5">
-                            <Card>
-                                <CardHeader>
-                                    <CardDescription>Categorias</CardDescription>
-                                    <CardTitle>{adminSummary.categories_count}</CardTitle>
-                                </CardHeader>
-                            </Card>
+                        <div className="grid gap-4 md:grid-cols-4">
                             <Card>
                                 <CardHeader>
                                     <CardDescription>Productos</CardDescription>
@@ -300,9 +301,6 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                             </CardHeader>
                             <CardContent className="flex flex-wrap gap-2">
                                 <Button asChild variant="outline">
-                                    <Link href={adminCategoriesIndex()}>Categorias</Link>
-                                </Button>
-                                <Button asChild variant="outline">
                                     <Link href={adminProductsIndex()}>Productos</Link>
                                 </Button>
                                 <Button asChild variant="outline">
@@ -331,7 +329,7 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                                             className="rounded-md border p-3 text-sm"
                                         >
                                             <div className="font-medium">
-                                                {order.public_id} • {order.status}
+                                                Orden Nro {order.order_number ?? '-'} • {order.status}
                                             </div>
                                             <div className="text-muted-foreground">
                                                 {order.customer_email} - {order.provider_name} ({order.provider_email})
@@ -355,126 +353,119 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
 
                 {providerWorkspace !== null && (
                     <div className="space-y-4">
-                        <Card>
+                        <Card className="border-cyan-500/25 bg-linear-to-r from-cyan-500/10 via-sky-500/10 to-teal-500/10">
                             <CardHeader>
-                                <CardTitle>{providerWorkspace.provider.company_name}</CardTitle>
-                                <CardDescription>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Building2 className="size-5 text-cyan-600" />
+                                    {providerWorkspace.provider.company_name}
+                                </CardTitle>
+                                <CardDescription className="flex items-center gap-2">
+                                    <PackageSearch className="size-4" />
                                     {providerWorkspace.provider.stand_label}
                                 </CardDescription>
                             </CardHeader>
                         </Card>
 
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                            <Card className="border-cyan-500/20">
+                                <CardHeader>
+                                    <CardDescription>Productos asignados</CardDescription>
+                                    <CardTitle>{providerStats.products_count}</CardTitle>
+                                </CardHeader>
+                            </Card>
+                            <Card className="border-amber-500/20">
+                                <CardHeader>
+                                    <CardDescription>Pedidos pendientes</CardDescription>
+                                    <CardTitle>{providerStats.pending_orders_count}</CardTitle>
+                                </CardHeader>
+                            </Card>
+                            <Card className="border-emerald-500/20">
+                                <CardHeader>
+                                    <CardDescription>Pedidos confirmados</CardDescription>
+                                    <CardTitle>{providerStats.confirmed_orders_count}</CardTitle>
+                                </CardHeader>
+                            </Card>
+                            <Card className="border-sky-500/20">
+                                <CardHeader>
+                                    <CardDescription>Ahorro acumulado</CardDescription>
+                                    <CardTitle>${providerStats.total_savings.toFixed(2)}</CardTitle>
+                                </CardHeader>
+                            </Card>
+                        </div>
+
                         <Card>
                             <CardHeader>
-                                <CardTitle>Crear pedido</CardTitle>
+                                <CardTitle className="flex items-center gap-2">
+                                    <ClipboardList className="size-5 text-cyan-600" />
+                                    Gestion de pedidos
+                                </CardTitle>
                                 <CardDescription>
-                                    Selecciona productos asignados y confirma con OTP.
+                                    La creacion, edicion y eliminacion de pedidos ahora se gestiona en el modulo Pedidos.
+                                </CardDescription>
+                                <div>
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link href={providerOrdersIndex()}>
+                                            Ir al modulo Pedidos
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="text-sm text-muted-foreground">
+                                Desde el dashboard solo se muestra informacion operativa de pedidos confirmados y pendientes por confirmar.
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <CalendarClock className="size-5 text-cyan-600" />
+                                    Historial reciente
+                                </CardTitle>
+                                <CardDescription>
+                                    Filtra pedidos por estado y gestiona OTP pendientes.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent>
-                                <form onSubmit={submitOrder} className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label
-                                            htmlFor="customer-email"
-                                            className="text-sm font-medium"
-                                        >
-                                            Correo del cliente
-                                        </label>
-                                        <Input
-                                            id="customer-email"
-                                            type="email"
-                                            value={orderForm.data.customer_email}
-                                            onChange={(event) =>
-                                                orderForm.setData(
-                                                    'customer_email',
-                                                    event.target.value,
-                                                )
-                                            }
-                                            placeholder="cliente@correo.com"
-                                        />
-                                        <InputError
-                                            message={orderForm.errors.customer_email}
-                                        />
-                                    </div>
-
-                                    <div className="grid gap-3">
-                                        {providerWorkspace.products.map((product) => (
-                                            <div
-                                                key={product.id}
-                                                className="grid items-center gap-3 rounded-md border p-3 md:grid-cols-[1fr_130px]"
-                                            >
-                                                <div>
-                                                    <p className="font-medium">
-                                                        {product.product_name} ({product.sku})
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {product.category_name} • Original ${product.original_price} • Especial ${product.special_price}
-                                                    </p>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label
-                                                        htmlFor={`quantity-${product.product_id}`}
-                                                        className="text-xs text-muted-foreground"
-                                                    >
-                                                        Cantidad
-                                                    </label>
-                                                    <Input
-                                                        id={`quantity-${product.product_id}`}
-                                                        type="number"
-                                                        min={0}
-                                                        max={999}
-                                                        value={
-                                                            quantities[
-                                                                product.product_id
-                                                            ] ?? 0
-                                                        }
-                                                        onChange={(event) =>
-                                                            handleQuantityChange(
-                                                                product.product_id,
-                                                                Number(
-                                                                    event.target
-                                                                        .value,
-                                                                ),
-                                                            )
-                                                        }
-                                                    />
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    {orderItemsError && (
-                                        <p className="text-sm text-destructive">
-                                            {orderItemsError}
-                                        </p>
-                                    )}
-
-                                    <InputError message={orderForm.errors.items} />
-
-                                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                                        Productos seleccionados: {selectedProducts.length} | Total estimado: ${estimatedTotal.toFixed(2)}
-                                    </div>
-
-                                    <Button type="submit" disabled={orderForm.processing}>
-                                        Generar pedido y enviar OTP
-                                    </Button>
-                                </form>
+                            <CardContent className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant={orderFilter === 'all' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setOrderFilter('all')}
+                                >
+                                    Todos
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={orderFilter === 'pending' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setOrderFilter('pending')}
+                                >
+                                    Pendientes
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={orderFilter === 'confirmed' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setOrderFilter('confirmed')}
+                                >
+                                    Confirmados
+                                </Button>
                             </CardContent>
                         </Card>
 
                         <div className="grid gap-4 lg:grid-cols-2">
-                            {providerWorkspace.recent_orders.map((order) => (
+                            {filteredRecentOrders.map((order) => (
                                 <PendingOrderCard
                                     key={order.public_id}
                                     order={order}
                                 />
                             ))}
 
-                            {providerWorkspace.recent_orders.length === 0 && (
+                            {filteredRecentOrders.length === 0 && (
                                 <Card>
                                     <CardContent>
                                         <p className="py-2 text-sm text-muted-foreground">
-                                            Aun no has generado pedidos.
+                                            No hay pedidos para el filtro seleccionado.
                                         </p>
                                     </CardContent>
                                 </Card>

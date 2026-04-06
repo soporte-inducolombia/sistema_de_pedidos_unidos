@@ -112,7 +112,7 @@ class RoleManagementTest extends TestCase
 
         $deleteFreeRoleResponse = $this->actingAs($admin)->delete(route('admin.roles.destroy', $freeRole));
         $deleteFreeRoleResponse->assertRedirect(route('admin.roles.index'));
-        $this->assertDatabaseMissing('roles', [
+        $this->assertSoftDeleted('roles', [
             'id' => $freeRole->id,
         ]);
 
