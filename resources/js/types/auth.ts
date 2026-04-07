@@ -3,7 +3,7 @@ export type UserRole = string;
 export type User = {
     id: number;
     name: string;
-    email: string;
+    email: string | null;
     role: UserRole;
     avatar?: string;
     email_verified_at: string | null;

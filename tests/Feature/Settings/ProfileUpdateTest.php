@@ -25,13 +25,15 @@ class ProfileUpdateTest extends TestCase
 
     public function test_profile_information_can_be_updated()
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create([
+            'email' => 'usuario.anterior@example.com',
+            'email_verified_at' => now(),
+        ]);
 
         $response = $this
             ->actingAs($user)
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
-                'email' => 'test@example.com',
             ]);
 
         $response
@@ -41,26 +43,29 @@ class ProfileUpdateTest extends TestCase
         $user->refresh();
 
         $this->assertSame('Test User', $user->name);
-        $this->assertSame('test@example.com', $user->email);
-        $this->assertNull($user->email_verified_at);
+        $this->assertSame('usuario.anterior@example.com', $user->email);
+        $this->assertNotNull($user->email_verified_at);
     }
 
-    public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged()
+    public function test_email_is_ignored_when_sending_profile_update_payload(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create([
+            'email' => 'mantener@example.com',
+            'email_verified_at' => now(),
+        ]);
 
         $response = $this
             ->actingAs($user)
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
-                'email' => $user->email,
+                'email' => 'nuevo@example.com',
             ]);
 
         $response
             ->assertSessionHasNoErrors()
             ->assertRedirect(route('profile.edit'));
 
-        $this->assertNotNull($user->refresh()->email_verified_at);
+        $this->assertSame('mantener@example.com', $user->refresh()->email);
     }
 
     public function test_user_can_delete_their_account()

@@ -77,7 +77,6 @@ class UserManagementTest extends TestCase
 
         $response = $this->actingAs($admin)->post(route('admin.users.store'), [
             'name' => 'Nuevo Usuario',
-            'email' => 'nuevo.usuario@example.com',
             'username' => 'nuevo_usuario',
             'role' => 'provider',
             'password' => 'SecurePass123!',
@@ -88,7 +87,6 @@ class UserManagementTest extends TestCase
 
         $this->assertDatabaseHas('users', [
             'name' => 'Nuevo Usuario',
-            'email' => 'nuevo.usuario@example.com',
             'username' => 'nuevo_usuario',
             'role' => 'provider',
         ]);
@@ -111,7 +109,6 @@ class UserManagementTest extends TestCase
 
         $response = $this->actingAs($provider)->post(route('admin.users.store'), [
             'name' => 'No Permitido',
-            'email' => 'no.permitido@example.com',
             'username' => 'no_permitido',
             'role' => 'provider',
             'password' => 'SecurePass123!',

@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { store } from '@/routes/login';
-import { request } from '@/routes/password';
 
 type Props = {
     status?: string;
@@ -54,7 +53,7 @@ export default function Login({
                                         <Label htmlFor="password">Contraseña</Label>
                                         {canResetPassword && (
                                             <TextLink
-                                                href={request()}
+                                                href="/forgot-password"
                                                 className="ml-auto text-sm"
                                                 tabIndex={5}
                                             >

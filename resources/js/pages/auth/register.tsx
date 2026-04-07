@@ -55,25 +55,11 @@ export default function Register() {
                             </div>
 
                             <div className="grid gap-2">
-                                <Label htmlFor="email">Correo electronico</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    required
-                                    tabIndex={3}
-                                    autoComplete="email"
-                                    name="email"
-                                    placeholder="correo@ejemplo.com"
-                                />
-                                <InputError message={errors.email} />
-                            </div>
-
-                            <div className="grid gap-2">
                                 <Label htmlFor="password">Contrasena</Label>
                                 <PasswordInput
                                     id="password"
                                     required
-                                    tabIndex={4}
+                                    tabIndex={3}
                                     autoComplete="new-password"
                                     name="password"
                                     placeholder="Contrasena"
@@ -88,7 +74,7 @@ export default function Register() {
                                 <PasswordInput
                                     id="password_confirmation"
                                     required
-                                    tabIndex={5}
+                                    tabIndex={4}
                                     autoComplete="new-password"
                                     name="password_confirmation"
                                     placeholder="Confirmar contrasena"
@@ -101,7 +87,7 @@ export default function Register() {
                             <Button
                                 type="submit"
                                 className="mt-2 w-full"
-                                tabIndex={6}
+                                tabIndex={5}
                                 data-test="register-user-button"
                             >
                                 {processing && <Spinner />}
@@ -111,7 +97,7 @@ export default function Register() {
 
                         <div className="text-center text-sm text-muted-foreground">
                             Ya tienes una cuenta?{' '}
-                            <TextLink href={login()} tabIndex={7}>
+                            <TextLink href={login()} tabIndex={6}>
                                 Iniciar sesion
                             </TextLink>
                         </div>

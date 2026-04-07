@@ -17,7 +17,7 @@ class DatabaseSeederTest extends TestCase
     {
         $this->seed();
 
-        $user = User::query()->where('email', 'soporte.inducolombia@gmail.com')->first();
+        $user = User::query()->where('username', 'soporte_inducolombia')->first();
 
         $this->assertNotNull($user);
         $this->assertSame('Test User', $user->name);

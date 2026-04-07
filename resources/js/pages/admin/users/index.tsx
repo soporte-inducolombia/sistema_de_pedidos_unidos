@@ -333,14 +333,12 @@ export default function UsersIndex({ users, roles, status }: Props) {
     const [search, setSearch] = useState('');
     const createForm = useForm<{
         name: string;
-        email: string;
         username: string;
         role: UserRole;
         password: string;
         password_confirmation: string;
     }>({
         name: '',
-        email: '',
         username: '',
         role: roles[0] ?? 'provider',
         password: '',
@@ -437,7 +435,7 @@ export default function UsersIndex({ users, roles, status }: Props) {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={submitCreate} className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <label htmlFor="create-user-name" className="text-sm font-medium">
                                         Nombre
@@ -450,21 +448,6 @@ export default function UsersIndex({ users, roles, status }: Props) {
                                         }
                                     />
                                     <InputError message={createForm.errors.name} />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label htmlFor="create-user-email" className="text-sm font-medium">
-                                        Correo
-                                    </label>
-                                    <Input
-                                        id="create-user-email"
-                                        type="email"
-                                        value={createForm.data.email}
-                                        onChange={(event) =>
-                                            createForm.setData('email', event.target.value)
-                                        }
-                                    />
-                                    <InputError message={createForm.errors.email} />
                                 </div>
 
                                 <div className="space-y-2">
