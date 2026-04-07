@@ -57,11 +57,12 @@ export default function TwoFactorRecoveryCodes({
             <CardHeader>
                 <CardTitle className="flex gap-3">
                     <LockKeyhole className="size-4" aria-hidden="true" />
-                    2FA recovery codes
+                    Codigos de recuperacion 2FA
                 </CardTitle>
                 <CardDescription>
-                    Recovery codes let you regain access if you lose your 2FA
-                    device. Store them in a secure password manager.
+                    Los codigos de recuperacion te permiten volver a entrar si
+                    pierdes tu dispositivo 2FA. Guardalos en un gestor de
+                    contrasenas seguro.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -76,7 +77,7 @@ export default function TwoFactorRecoveryCodes({
                             className="size-4"
                             aria-hidden="true"
                         />
-                        {codesAreVisible ? 'Hide' : 'View'} recovery codes
+                        {codesAreVisible ? 'Ocultar' : 'Ver'} codigos de recuperacion
                     </Button>
 
                     {canRegenerateCodes && (
@@ -92,7 +93,7 @@ export default function TwoFactorRecoveryCodes({
                                     disabled={processing}
                                     aria-describedby="regenerate-warning"
                                 >
-                                    <RefreshCw /> Regenerate codes
+                                    <RefreshCw /> Regenerar codigos
                                 </Button>
                             )}
                         </Form>
@@ -112,7 +113,7 @@ export default function TwoFactorRecoveryCodes({
                                     ref={codesSectionRef}
                                     className="grid gap-1 rounded-lg bg-muted p-4 font-mono text-sm"
                                     role="list"
-                                    aria-label="Recovery codes"
+                                    aria-label="Codigos de recuperacion"
                                 >
                                     {recoveryCodesList.length ? (
                                         recoveryCodesList.map((code, index) => (
@@ -127,7 +128,7 @@ export default function TwoFactorRecoveryCodes({
                                     ) : (
                                         <div
                                             className="space-y-2"
-                                            aria-label="Loading recovery codes"
+                                            aria-label="Cargando codigos de recuperacion"
                                         >
                                             {Array.from(
                                                 { length: 8 },
@@ -145,13 +146,14 @@ export default function TwoFactorRecoveryCodes({
 
                                 <div className="text-xs text-muted-foreground select-none">
                                     <p id="regenerate-warning">
-                                        Each recovery code can be used once to
-                                        access your account and will be removed
-                                        after use. If you need more, click{' '}
+                                        Cada codigo se puede usar una sola vez
+                                        para acceder a tu cuenta y se eliminara
+                                        despues de usarlo. Si necesitas mas,
+                                        haz clic en{' '}
                                         <span className="font-bold">
-                                            Regenerate codes
+                                            Regenerar codigos
                                         </span>{' '}
-                                        above.
+                                        arriba.
                                     </p>
                                 </div>
                             </>
