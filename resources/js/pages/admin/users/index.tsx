@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
+import PasswordInput from '@/components/password-input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -58,10 +59,14 @@ function EditableUserCard({
         name: string;
         username: string;
         role: UserRole;
+        password: string;
+        password_confirmation: string;
     }>({
         name: user.name,
         username: user.username,
         role: user.role,
+        password: '',
+        password_confirmation: '',
     });
 
     const createdAtLabel = user.created_at
@@ -71,8 +76,24 @@ function EditableUserCard({
     const submit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
+        form.transform((data) => ({
+            name: data.name,
+            username: data.username,
+            role: data.role,
+            ...(data.password.trim().length > 0
+                ? {
+                      password: data.password,
+                      password_confirmation: data.password_confirmation,
+                  }
+                : {}),
+        }));
+
         form.patch(update.url({ user: user.id }), {
             preserveScroll: true,
+            onSuccess: () => {
+                form.setData('password', '');
+                form.setData('password_confirmation', '');
+            },
         });
     };
 
@@ -245,6 +266,48 @@ function EditableUserCard({
                             </select>
                             <InputError message={form.errors.role} />
                         </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`password-${user.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Nueva contraseña (opcional)
+                                </label>
+                                <PasswordInput
+                                    id={`password-${user.id}`}
+                                    value={form.data.password}
+                                    autoComplete="new-password"
+                                    onChange={(event) =>
+                                        form.setData('password', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.password} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`password-confirmation-${user.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Confirmar contraseña
+                                </label>
+                                <PasswordInput
+                                    id={`password-confirmation-${user.id}`}
+                                    value={form.data.password_confirmation}
+                                    autoComplete="new-password"
+                                    onChange={(event) =>
+                                        form.setData('password_confirmation', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.password_confirmation} />
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">
+                            Si no quieres cambiar la contraseña, deja ambos campos vacíos.
+                        </p>
 
                         <div className="flex flex-wrap items-center gap-2">
                             <Button type="submit" disabled={form.processing}>

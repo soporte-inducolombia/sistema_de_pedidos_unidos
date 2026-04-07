@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class UserUpdateRequest extends FormRequest
 {
@@ -31,6 +32,16 @@ class UserUpdateRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255', 'alpha_dash', Rule::unique(User::class, 'username')->ignore($user)],
             'role' => ['required', 'string', 'max:50', Rule::exists('roles', 'slug')],
+            'password' => ['nullable', 'string', Password::default(), 'confirmed'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $password = $this->input('password');
+
+        $this->merge([
+            'password' => $password === '' ? null : $password,
+        ]);
     }
 }

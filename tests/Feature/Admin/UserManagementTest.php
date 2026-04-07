@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Provider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class UserManagementTest extends TestCase
@@ -66,6 +67,34 @@ class UserManagementTest extends TestCase
             'username' => 'usuario_editado',
             'role' => 'admin',
         ]);
+    }
+
+    public function test_admin_can_update_user_password(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $targetUser = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $originalPasswordHash = $targetUser->password;
+
+        $response = $this->actingAs($admin)->patch(route('admin.users.update', $targetUser), [
+            'name' => $targetUser->name,
+            'username' => $targetUser->username,
+            'role' => $targetUser->role,
+            'password' => 'SecurePass123!',
+            'password_confirmation' => 'SecurePass123!',
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+
+        $targetUser->refresh();
+
+        $this->assertNotSame($originalPasswordHash, $targetUser->password);
+        $this->assertTrue(Hash::check('SecurePass123!', (string) $targetUser->password));
     }
 
     public function test_admin_can_delete_another_user_but_not_self(): void

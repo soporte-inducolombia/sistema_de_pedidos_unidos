@@ -53,8 +53,13 @@ class UserManagementController extends Controller
     public function update(UserUpdateRequest $request, User $user): RedirectResponse
     {
         $previousRole = $user->role;
+        $validated = $request->validated();
 
-        $user->fill($request->validated());
+        if (($validated['password'] ?? null) === null) {
+            unset($validated['password']);
+        }
+
+        $user->fill($validated);
         $user->save();
 
         $this->syncProviderProfile($user, $previousRole);
