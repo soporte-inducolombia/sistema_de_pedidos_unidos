@@ -15,7 +15,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { destroy, index, update } from '@/routes/admin/users';
+import { destroy, index, store, update } from '@/routes/admin/users';
 import type { UserRole } from '@/types';
 
 type ManagedUser = {
@@ -331,6 +331,33 @@ function EditableUserCard({
 export default function UsersIndex({ users, roles, status }: Props) {
     const { auth, errors } = usePage<SharedPageProps>().props;
     const [search, setSearch] = useState('');
+    const createForm = useForm<{
+        name: string;
+        email: string;
+        username: string;
+        role: UserRole;
+        password: string;
+        password_confirmation: string;
+    }>({
+        name: '',
+        email: '',
+        username: '',
+        role: roles[0] ?? 'provider',
+        password: '',
+        password_confirmation: '',
+    });
+
+    const submitCreate = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        createForm.post(store.url(), {
+            preserveScroll: true,
+            onSuccess: () => {
+                createForm.reset();
+                createForm.setData('role', roles[0] ?? 'provider');
+            },
+        });
+    };
 
     const filteredUsers = useMemo(() => {
         const term = search.trim().toLowerCase();
@@ -400,6 +427,121 @@ export default function UsersIndex({ users, roles, status }: Props) {
                         {errors.delete}
                     </div>
                 )}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base">Registrar usuario</CardTitle>
+                        <CardDescription>
+                            Solo administradores pueden crear usuarios del sistema.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={submitCreate} className="space-y-4">
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="space-y-2">
+                                    <label htmlFor="create-user-name" className="text-sm font-medium">
+                                        Nombre
+                                    </label>
+                                    <Input
+                                        id="create-user-name"
+                                        value={createForm.data.name}
+                                        onChange={(event) =>
+                                            createForm.setData('name', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={createForm.errors.name} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label htmlFor="create-user-email" className="text-sm font-medium">
+                                        Correo
+                                    </label>
+                                    <Input
+                                        id="create-user-email"
+                                        type="email"
+                                        value={createForm.data.email}
+                                        onChange={(event) =>
+                                            createForm.setData('email', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={createForm.errors.email} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label htmlFor="create-user-username" className="text-sm font-medium">
+                                        Usuario
+                                    </label>
+                                    <Input
+                                        id="create-user-username"
+                                        value={createForm.data.username}
+                                        autoCapitalize="none"
+                                        onChange={(event) =>
+                                            createForm.setData('username', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={createForm.errors.username} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="create-user-role" className="text-sm font-medium">
+                                    Rol
+                                </label>
+                                <select
+                                    id="create-user-role"
+                                    value={createForm.data.role}
+                                    onChange={(event) =>
+                                        createForm.setData('role', event.target.value as UserRole)
+                                    }
+                                    className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                >
+                                    {roles.map((role) => (
+                                        <option key={role} value={role}>
+                                            {role}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={createForm.errors.role} />
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <label htmlFor="create-user-password" className="text-sm font-medium">
+                                        Contraseña
+                                    </label>
+                                    <PasswordInput
+                                        id="create-user-password"
+                                        value={createForm.data.password}
+                                        autoComplete="new-password"
+                                        onChange={(event) =>
+                                            createForm.setData('password', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={createForm.errors.password} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label htmlFor="create-user-password-confirmation" className="text-sm font-medium">
+                                        Confirmar contraseña
+                                    </label>
+                                    <PasswordInput
+                                        id="create-user-password-confirmation"
+                                        value={createForm.data.password_confirmation}
+                                        autoComplete="new-password"
+                                        onChange={(event) =>
+                                            createForm.setData('password_confirmation', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={createForm.errors.password_confirmation} />
+                                </div>
+                            </div>
+
+                            <Button type="submit" disabled={createForm.processing}>
+                                Registrar usuario
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
 
                 <Card className="border-cyan-500/20">
                     <CardHeader className="pb-2">

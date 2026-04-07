@@ -42,6 +42,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('provider-products/{providerProduct}', [ProviderProductManagementController::class, 'destroy'])->name('provider-products.destroy');
 
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
+        Route::post('users', [UserManagementController::class, 'store'])->name('users.store');
         Route::patch('users/{user}', [UserManagementController::class, 'update'])->name('users.update');
         Route::delete('users/{user}', [UserManagementController::class, 'destroy'])->name('users.destroy');
 

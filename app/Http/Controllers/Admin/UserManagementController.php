@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\UserStoreRequest;
 use App\Http\Requests\Admin\UserUpdateRequest;
 use App\Models\Role;
 use App\Models\User;
@@ -45,6 +46,18 @@ class UserManagementController extends Controller
             'roles' => $roles,
             'status' => $request->session()->get('status'),
         ]);
+    }
+
+    /**
+     * Create a user from administration module.
+     */
+    public function store(UserStoreRequest $request): RedirectResponse
+    {
+        $user = User::query()->create($request->validated());
+
+        $this->syncProviderProfile($user, '');
+
+        return to_route('admin.users.index')->with('status', 'Usuario registrado correctamente.');
     }
 
     /**

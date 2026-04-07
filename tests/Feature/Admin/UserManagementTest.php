@@ -69,6 +69,62 @@ class UserManagementTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_create_user_from_users_module(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.users.store'), [
+            'name' => 'Nuevo Usuario',
+            'email' => 'nuevo.usuario@example.com',
+            'username' => 'nuevo_usuario',
+            'role' => 'provider',
+            'password' => 'SecurePass123!',
+            'password_confirmation' => 'SecurePass123!',
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+
+        $this->assertDatabaseHas('users', [
+            'name' => 'Nuevo Usuario',
+            'email' => 'nuevo.usuario@example.com',
+            'username' => 'nuevo_usuario',
+            'role' => 'provider',
+        ]);
+
+        $createdUser = User::query()->where('username', 'nuevo_usuario')->first();
+
+        $this->assertNotNull($createdUser);
+
+        $this->assertDatabaseHas('providers', [
+            'user_id' => $createdUser?->id,
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_non_admin_cannot_create_user_from_users_module(): void
+    {
+        $provider = User::factory()->create([
+            'role' => 'provider',
+        ]);
+
+        $response = $this->actingAs($provider)->post(route('admin.users.store'), [
+            'name' => 'No Permitido',
+            'email' => 'no.permitido@example.com',
+            'username' => 'no_permitido',
+            'role' => 'provider',
+            'password' => 'SecurePass123!',
+            'password_confirmation' => 'SecurePass123!',
+        ]);
+
+        $response->assertForbidden();
+
+        $this->assertDatabaseMissing('users', [
+            'username' => 'no_permitido',
+        ]);
+    }
+
     public function test_admin_can_update_user_password(): void
     {
         $admin = User::factory()->create([
@@ -77,6 +133,7 @@ class UserManagementTest extends TestCase
 
         $targetUser = User::factory()->create([
             'role' => 'provider',
+            'username' => 'proveedor_password',
         ]);
 
         $originalPasswordHash = $targetUser->password;
