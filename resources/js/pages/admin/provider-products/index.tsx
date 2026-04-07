@@ -33,7 +33,6 @@ type Assignment = {
     id: number;
     provider_id: number;
     provider_name: string | null;
-    provider_email: string | null;
     product_id: number;
     product_name: string | null;
     product_code: string | null;
@@ -47,7 +46,6 @@ type Assignment = {
 type ProviderOption = {
     id: number;
     company_name: string;
-    user_email: string | null;
 };
 
 type ProductOption = {
@@ -251,9 +249,7 @@ function EditableAssignmentCard({
                         <CardTitle>
                             {assignment.product_name} ({assignment.product_code})
                         </CardTitle>
-                        <CardDescription>
-                            {assignment.provider_name} • {assignment.provider_email}
-                        </CardDescription>
+                        <CardDescription>{assignment.provider_name}</CardDescription>
                     </div>
                     <Badge
                         variant="outline"
@@ -350,7 +346,7 @@ function EditableAssignmentCard({
                                 >
                                     {providers.map((provider) => (
                                         <option key={provider.id} value={provider.id}>
-                                            {provider.company_name} ({provider.user_email})
+                                            {provider.company_name}
                                         </option>
                                     ))}
                                 </select>
@@ -559,10 +555,7 @@ export default function ProviderProductsIndex({
         }
 
         return providers.filter((provider) => {
-            return (
-                provider.company_name.toLowerCase().includes(term) ||
-                (provider.user_email ?? '').toLowerCase().includes(term)
-            );
+            return provider.company_name.toLowerCase().includes(term);
         });
     }, [providerSearchTerm, providers]);
 
@@ -917,7 +910,6 @@ export default function ProviderProductsIndex({
         return assignments.filter((assignment) => {
             return (
                 (assignment.provider_name ?? '').toLowerCase().includes(term) ||
-                (assignment.provider_email ?? '').toLowerCase().includes(term) ||
                 (assignment.product_name ?? '').toLowerCase().includes(term) ||
                 (assignment.product_code ?? '').toLowerCase().includes(term) ||
                 (assignment.product_barcode ?? '').toLowerCase().includes(term)
@@ -1026,7 +1018,7 @@ export default function ProviderProductsIndex({
 
                             {createStep === 1 && (
                                 <div className="space-y-4">
-                                    <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="grid items-start gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
                                             <label
                                                 htmlFor="provider-create-search"
@@ -1042,7 +1034,7 @@ export default function ProviderProductsIndex({
                                                     onChange={(event) =>
                                                         setProviderSearchTerm(event.target.value)
                                                     }
-                                                    placeholder="Empresa o correo"
+                                                    placeholder="Empresa"
                                                     className="pl-9"
                                                 />
                                             </div>
@@ -1071,7 +1063,7 @@ export default function ProviderProductsIndex({
                                     </div>
 
                                     <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-3 rounded-lg border border-slate-200/70 p-3 dark:border-slate-800">
+                                        <div className="self-start space-y-3 rounded-lg border border-slate-200/70 p-3 dark:border-slate-800">
                                             <p className="flex items-center gap-2 text-sm font-medium">
                                                 <Handshake className="size-4 text-amber-600" />
                                                 Elige proveedor
@@ -1094,9 +1086,6 @@ export default function ProviderProductsIndex({
                                                             <p className="font-medium text-foreground">
                                                                 {provider.company_name}
                                                             </p>
-                                                            <p className="text-xs text-muted-foreground">
-                                                                {provider.user_email ?? 'Sin correo asociado'}
-                                                            </p>
                                                         </button>
                                                     );
                                                 })}
@@ -1109,7 +1098,7 @@ export default function ProviderProductsIndex({
                                             </div>
                                         </div>
 
-                                        <div className="space-y-3 rounded-lg border border-slate-200/70 p-3 dark:border-slate-800">
+                                        <div className="self-start space-y-3 rounded-lg border border-slate-200/70 p-3 dark:border-slate-800">
                                             <p className="flex items-center gap-2 text-sm font-medium">
                                                 <PackageSearch className="size-4 text-teal-600" />
                                                 Elige productos
@@ -1548,7 +1537,7 @@ export default function ProviderProductsIndex({
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base">Buscar asignacion</CardTitle>
                         <CardDescription>
-                            Filtra por proveedor, correo, producto, codigo o barras.
+                            Filtra por proveedor, producto, codigo o barras.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>

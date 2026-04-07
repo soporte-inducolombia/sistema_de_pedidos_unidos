@@ -30,6 +30,63 @@ class ProviderProductManagementTest extends TestCase
         $response->assertSee((string) $assignment->provider?->company_name);
     }
 
+    public function test_provider_profiles_are_synced_from_provider_users_when_loading_assignments(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $providerWithoutProfile = User::factory()->create([
+            'role' => 'provider',
+            'name' => 'Proveedor Nuevo',
+        ]);
+
+        $providerWithInactiveProfile = User::factory()->create([
+            'role' => 'provider',
+            'name' => 'Proveedor Inactivo',
+        ]);
+
+        Provider::factory()->create([
+            'user_id' => $providerWithInactiveProfile->id,
+            'is_active' => false,
+        ]);
+
+        $providerWithTrashedProfile = User::factory()->create([
+            'role' => 'provider',
+            'name' => 'Proveedor Archivado',
+        ]);
+
+        $trashedProvider = Provider::factory()->create([
+            'user_id' => $providerWithTrashedProfile->id,
+            'is_active' => false,
+        ]);
+
+        $trashedProvider->delete();
+
+        $response = $this->actingAs($admin)->get(route('admin.provider-products.index'));
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('providers', [
+            'user_id' => $providerWithoutProfile->id,
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+
+        $this->assertDatabaseHas('providers', [
+            'user_id' => $providerWithInactiveProfile->id,
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+
+        $this->assertDatabaseHas('providers', [
+            'id' => $trashedProvider->id,
+            'user_id' => $providerWithTrashedProfile->id,
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+    }
+
     public function test_non_admin_users_cannot_access_provider_product_management_page(): void
     {
         $provider = User::factory()->create([

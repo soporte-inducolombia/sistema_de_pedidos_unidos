@@ -8,9 +8,11 @@ use App\Http\Requests\Admin\ProviderProductUpsertRequest;
 use App\Models\Product;
 use App\Models\Provider;
 use App\Models\ProviderProduct;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,15 +21,16 @@ class ProviderProductManagementController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->syncProviderProfilesFromUsers();
+
         $assignments = ProviderProduct::query()
-            ->with(['provider.user:id,email', 'product'])
+            ->with(['provider', 'product'])
             ->orderByDesc('updated_at')
             ->get()
             ->map(fn (ProviderProduct $providerProduct): array => [
                 'id' => $providerProduct->id,
                 'provider_id' => $providerProduct->provider_id,
                 'provider_name' => $providerProduct->provider?->company_name,
-                'provider_email' => $providerProduct->provider?->user?->email,
                 'product_id' => $providerProduct->product_id,
                 'product_name' => $providerProduct->product?->name,
                 'product_code' => $providerProduct->product?->code,
@@ -41,14 +44,12 @@ class ProviderProductManagementController extends Controller
             ->all();
 
         $providers = Provider::query()
-            ->with('user:id,email')
             ->where('is_active', true)
             ->orderBy('company_name')
             ->get(['id', 'company_name', 'user_id', 'is_active'])
             ->map(fn (Provider $provider): array => [
                 'id' => $provider->id,
                 'company_name' => $provider->company_name,
-                'user_email' => $provider->user?->email,
             ])
             ->values()
             ->all();
@@ -73,6 +74,38 @@ class ProviderProductManagementController extends Controller
             'products' => $products,
             'status' => $request->session()->get('status'),
         ]);
+    }
+
+    private function syncProviderProfilesFromUsers(): void
+    {
+        User::query()
+            ->where('role', 'provider')
+            ->whereNull('deleted_at')
+            ->select(['id', 'name'])
+            ->get()
+            ->each(function (User $user): void {
+                $provider = Provider::query()->withTrashed()->where('user_id', $user->id)->first();
+
+                if ($provider === null) {
+                    Provider::query()->create([
+                        'user_id' => $user->id,
+                        'company_name' => Str::limit('Proveedor '.$user->name, 255, ''),
+                        'is_active' => true,
+                    ]);
+
+                    return;
+                }
+
+                if ($provider->trashed()) {
+                    $provider->restore();
+                }
+
+                if (! $provider->is_active) {
+                    $provider->update([
+                        'is_active' => true,
+                    ]);
+                }
+            });
     }
 
     public function store(ProviderProductUpsertRequest $request): RedirectResponse
