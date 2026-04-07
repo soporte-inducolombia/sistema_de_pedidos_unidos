@@ -10,11 +10,8 @@ use App\Http\Controllers\Orders\OrderController;
 use App\Http\Controllers\Orders\OrderOtpVerificationController;
 use App\Http\Controllers\Orders\ProviderOrderManagementController;
 use Illuminate\Support\Facades\Route;
-use Laravel\Fortify\Features;
 
-Route::inertia('/', 'welcome', [
-    'canRegister' => Features::enabled(Features::registration()),
-])->name('home');
+Route::redirect('/', '/login')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
