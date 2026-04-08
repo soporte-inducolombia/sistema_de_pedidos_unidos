@@ -21,6 +21,7 @@ class Product extends Model
         return [
             'is_active' => 'boolean',
             'original_price' => 'decimal:2',
+            'packaging_multiple' => 'integer',
         ];
     }
 

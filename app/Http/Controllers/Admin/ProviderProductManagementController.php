@@ -68,10 +68,35 @@ class ProviderProductManagementController extends Controller
             ->values()
             ->all();
 
+        $globallyAssignedProductIds = ProviderProduct::query()
+            ->pluck('product_id')
+            ->map(static fn ($productId): int => (int) $productId)
+            ->unique()
+            ->values()
+            ->all();
+
+        $allActiveProductIds = array_values(array_map(
+            static fn (array $product): int => (int) $product['id'],
+            $products,
+        ));
+
+        $availableProductIdsByProvider = [];
+
+        $globallyAvailableProductIds = array_values(array_filter(
+            $allActiveProductIds,
+            static fn (int $productId): bool => ! in_array($productId, $globallyAssignedProductIds, true),
+        ));
+
+        foreach ($providers as $provider) {
+            $providerId = (int) $provider['id'];
+            $availableProductIdsByProvider[(string) $providerId] = $globallyAvailableProductIds;
+        }
+
         return Inertia::render('admin/provider-products/index', [
             'assignments' => $assignments,
             'providers' => $providers,
             'products' => $products,
+            'available_product_ids_by_provider' => $availableProductIdsByProvider,
             'status' => $request->session()->get('status'),
         ]);
     }
@@ -79,7 +104,7 @@ class ProviderProductManagementController extends Controller
     private function syncProviderProfilesFromUsers(): void
     {
         User::query()
-            ->where('role', 'provider')
+            ->whereIn('role', ['provider', 'proveedor'])
             ->whereNull('deleted_at')
             ->select(['id', 'name'])
             ->get()
@@ -207,6 +232,7 @@ class ProviderProductManagementController extends Controller
         DB::transaction(function () use ($validated, $productIds): void {
             $providerId = (int) $validated['provider_id'];
             $isActive = (bool) $validated['is_active'];
+            $discountsByProductId = $this->resolveBulkDiscountsByProductId($validated, $productIds);
 
             $products = Product::query()
                 ->lockForUpdate()
@@ -223,7 +249,15 @@ class ProviderProductManagementController extends Controller
                 }
 
                 $originalPrice = (float) $product->original_price;
-                [$discountPercent, $specialPrice] = $this->resolvePricingValues($originalPrice, $validated);
+                $discountPercent = $discountsByProductId[$product->id] ?? null;
+
+                if ($discountPercent === null) {
+                    throw ValidationException::withMessages([
+                        'product_discounts' => 'Debes indicar un descuento para cada producto seleccionado.',
+                    ]);
+                }
+
+                $specialPrice = $this->resolveSpecialPrice($originalPrice, $discountPercent);
 
                 $payload = [
                     'provider_id' => $providerId,
@@ -251,6 +285,44 @@ class ProviderProductManagementController extends Controller
                 }
             }
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @param  array<int, int>  $productIds
+     * @return array<int, float>
+     */
+    private function resolveBulkDiscountsByProductId(array $validated, array $productIds): array
+    {
+        $productDiscounts = $validated['product_discounts'] ?? null;
+
+        if (is_array($productDiscounts) && $productDiscounts !== []) {
+            $discountsByProductId = [];
+
+            foreach ($productDiscounts as $productDiscount) {
+                if (! is_array($productDiscount)) {
+                    continue;
+                }
+
+                $productId = (int) ($productDiscount['product_id'] ?? 0);
+
+                if ($productId <= 0 || ! in_array($productId, $productIds, true)) {
+                    continue;
+                }
+
+                $discountsByProductId[$productId] = (float) ($productDiscount['discount_value'] ?? 0);
+            }
+
+            return $discountsByProductId;
+        }
+
+        if (array_key_exists('discount_value', $validated) && $validated['discount_value'] !== null) {
+            return array_fill_keys($productIds, (float) $validated['discount_value']);
+        }
+
+        throw ValidationException::withMessages([
+            'product_discounts' => 'Debes indicar un descuento por producto o un descuento global.',
+        ]);
     }
 
     /**

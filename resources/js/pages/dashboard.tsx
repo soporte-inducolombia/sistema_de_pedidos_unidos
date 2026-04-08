@@ -21,6 +21,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { formatCopCurrency } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import { index as adminProductsIndex } from '@/routes/admin/products';
 import { index as adminProviderProductsIndex } from '@/routes/admin/provider-products';
@@ -153,11 +154,11 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
                 <div className="grid gap-2 text-sm md:grid-cols-2">
                     <div className="rounded-md border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50">
                         <p className="text-xs text-muted-foreground">Total</p>
-                        <p className="font-medium">${order.subtotal_special}</p>
+                        <p className="font-medium">{formatCopCurrency(order.subtotal_special)}</p>
                     </div>
                     <div className="rounded-md border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50">
                         <p className="text-xs text-muted-foreground">Ahorro</p>
-                        <p className="font-medium">${order.total_discount}</p>
+                        <p className="font-medium">{formatCopCurrency(order.total_discount)}</p>
                     </div>
                     <div className="rounded-md border border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50 md:col-span-2">
                         <p className="text-xs text-muted-foreground">Creado</p>
@@ -335,7 +336,7 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                                                 {order.customer_email} - {order.provider_name} ({order.provider_email})
                                             </div>
                                             <div className="text-muted-foreground">
-                                                Ahorro: ${order.total_discount}
+                                                Ahorro: {formatCopCurrency(order.total_discount)}
                                             </div>
                                         </div>
                                     ))}
@@ -388,7 +389,7 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                             <Card className="border-sky-500/20">
                                 <CardHeader>
                                     <CardDescription>Ahorro acumulado</CardDescription>
-                                    <CardTitle>${providerStats.total_savings.toFixed(2)}</CardTitle>
+                                    <CardTitle>{formatCopCurrency(providerStats.total_savings)}</CardTitle>
                                 </CardHeader>
                             </Card>
                         </div>

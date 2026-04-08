@@ -122,6 +122,38 @@ class UserManagementTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_create_customer_user_without_manual_credentials(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.users.store'), [
+            'role' => 'cliente',
+            'nit' => '900123456-7',
+            'business_name' => 'Comercial Uno SAS',
+            'supermarket_name' => 'Supermercado Uno',
+            'address' => 'Calle 10 # 20-30',
+            'city' => 'Medellin',
+            'department' => 'Antioquia',
+            'email' => 'cliente.uno@example.com',
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+
+        $createdUser = User::query()
+            ->where('nit', '900123456-7')
+            ->first();
+
+        $this->assertNotNull($createdUser);
+        $this->assertSame('cliente', $createdUser->role);
+        $this->assertSame('Supermercado Uno', $createdUser->name);
+        $this->assertSame('Comercial Uno SAS', $createdUser->business_name);
+        $this->assertSame('Supermercado Uno', $createdUser->supermarket_name);
+        $this->assertNotNull($createdUser->username);
+        $this->assertNotNull($createdUser->password);
+    }
+
     public function test_admin_can_update_user_password(): void
     {
         $admin = User::factory()->create([

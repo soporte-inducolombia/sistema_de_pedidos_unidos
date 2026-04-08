@@ -22,6 +22,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { formatCopCurrency } from '@/lib/utils';
 import { destroy, index, store, update } from '@/routes/admin/products';
 
 type ProductItem = {
@@ -31,6 +32,7 @@ type ProductItem = {
     name: string;
     description: string | null;
     original_price: string;
+    packaging_multiple: number;
     is_active: boolean;
     provider_products_count: number;
 };
@@ -60,6 +62,7 @@ function EditableProductCard({
         name: string;
         description: string;
         original_price: string;
+        packaging_multiple: number;
         is_active: boolean;
     }>({
         code: product.code,
@@ -67,6 +70,7 @@ function EditableProductCard({
         name: product.name,
         description: product.description ?? '',
         original_price: product.original_price,
+        packaging_multiple: product.packaging_multiple,
         is_active: product.is_active,
     });
 
@@ -155,7 +159,7 @@ function EditableProductCard({
 
             {isViewing && (
                 <CardContent className="border-t border-emerald-500/15 bg-background/80">
-                    <div className="grid gap-4 text-sm md:grid-cols-4">
+                    <div className="grid gap-4 text-sm md:grid-cols-5">
                         <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">
                                 Codigo
@@ -173,8 +177,14 @@ function EditableProductCard({
                                 Precio base
                             </p>
                             <p className="mt-1 font-medium text-foreground">
-                                ${product.original_price}
+                                {formatCopCurrency(product.original_price)}
                             </p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Embalaje minimo
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">x{product.packaging_multiple}</p>
                         </div>
                         <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -206,7 +216,7 @@ function EditableProductCard({
             {isEditing && (
                 <CardContent className="border-t border-dashed border-emerald-500/30 bg-emerald-500/3">
                     <form onSubmit={submit} className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-3">
+                        <div className="grid gap-4 md:grid-cols-4">
                             <div className="space-y-2">
                                 <label
                                     htmlFor={`product-code-${product.id}`}
@@ -257,6 +267,29 @@ function EditableProductCard({
                                     inputMode="decimal"
                                 />
                                 <InputError message={form.errors.original_price} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`product-packaging-${product.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Embalaje minimo
+                                </label>
+                                <Input
+                                    id={`product-packaging-${product.id}`}
+                                    value={form.data.packaging_multiple}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            'packaging_multiple',
+                                            Number(event.target.value || 1),
+                                        )
+                                    }
+                                    inputMode="numeric"
+                                    min={1}
+                                    type="number"
+                                />
+                                <InputError message={form.errors.packaging_multiple} />
                             </div>
                         </div>
 
@@ -338,6 +371,7 @@ export default function ProductsIndex({ products, status }: Props) {
         name: string;
         description: string;
         original_price: string;
+        packaging_multiple: number;
         is_active: boolean;
     }>({
         code: '',
@@ -345,6 +379,7 @@ export default function ProductsIndex({ products, status }: Props) {
         name: '',
         description: '',
         original_price: '',
+        packaging_multiple: 1,
         is_active: true,
     });
 
@@ -415,7 +450,7 @@ export default function ProductsIndex({ products, status }: Props) {
                             <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
                                 <CircleDollarSign className="size-5 text-cyan-600" />
                                 {products.length > 0
-                                    ? `$${(
+                                    ? formatCopCurrency(
                                           products.reduce((sum, product) => {
                                               return (
                                                   sum +
@@ -423,9 +458,9 @@ export default function ProductsIndex({ products, status }: Props) {
                                                       product.original_price,
                                                   )
                                               );
-                                          }, 0) / products.length
-                                      ).toFixed(2)}`
-                                    : '$0.00'}
+                                          }, 0) / products.length,
+                                      )
+                                    : '$0,00'}
                             </p>
                         </div>
                     </CardContent>
@@ -455,7 +490,7 @@ export default function ProductsIndex({ products, status }: Props) {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={submitCreate} className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-4">
                                 <div className="space-y-2">
                                     <label
                                         htmlFor="new-product-code"
@@ -513,6 +548,32 @@ export default function ProductsIndex({ products, status }: Props) {
                                     />
                                     <InputError
                                         message={createForm.errors.original_price}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label
+                                        htmlFor="new-product-packaging"
+                                        className="text-sm font-medium"
+                                    >
+                                        Embalaje minimo
+                                    </label>
+                                    <Input
+                                        id="new-product-packaging"
+                                        value={createForm.data.packaging_multiple}
+                                        onChange={(event) =>
+                                            createForm.setData(
+                                                'packaging_multiple',
+                                                Number(event.target.value || 1),
+                                            )
+                                        }
+                                        inputMode="numeric"
+                                        min={1}
+                                        type="number"
+                                        placeholder="1"
+                                    />
+                                    <InputError
+                                        message={createForm.errors.packaging_multiple}
                                     />
                                 </div>
                             </div>

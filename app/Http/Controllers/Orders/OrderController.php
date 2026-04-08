@@ -9,6 +9,7 @@ use App\Jobs\SendOrderOtpMailJob;
 use App\Models\Order;
 use App\Models\Provider;
 use App\Models\ProviderProduct;
+use App\Models\User;
 use App\Services\OrderOtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -41,11 +42,41 @@ class OrderController extends Controller
                 'id' => $providerProduct->id,
                 'product_id' => $providerProduct->product_id,
                 'product_name' => $providerProduct->product?->name,
-                'code' => $providerProduct->product?->code,
-                'barcode' => $providerProduct->product?->barcode,
-                'special_price' => (string) $providerProduct->special_price,
-                'discount_percent' => (string) $providerProduct->discount_value,
+                'original_price' => (string) $providerProduct->product?->original_price,
+                'default_discount_percent' => (string) $providerProduct->discount_value,
+                'packaging_multiple' => max(1, (int) $providerProduct->product?->packaging_multiple),
             ])
+            ->all();
+
+        $customers = User::query()
+            ->whereIn('role', ['cliente', 'client'])
+            ->whereNull('deleted_at')
+            ->orderBy('supermarket_name')
+            ->orderBy('business_name')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'email',
+                'nit',
+                'business_name',
+                'supermarket_name',
+                'address',
+                'city',
+                'department',
+            ])
+            ->map(fn (User $customer): array => [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'nit' => $customer->nit,
+                'business_name' => $customer->business_name,
+                'supermarket_name' => $customer->supermarket_name,
+                'address' => $customer->address,
+                'city' => $customer->city,
+                'department' => $customer->department,
+            ])
+            ->values()
             ->all();
 
         return Inertia::render('provider/orders/create', [
@@ -56,6 +87,7 @@ class OrderController extends Controller
                     'stand_label' => $provider->stand_label,
                 ],
                 'products' => $providerProducts,
+                'customers' => $customers,
             ],
         ]);
     }
@@ -66,7 +98,11 @@ class OrderController extends Controller
 
         $payload = $request->validated();
         $itemsByProduct = collect($payload['items'])
-            ->mapWithKeys(fn (array $item): array => [(int) $item['product_id'] => (int) $item['quantity']]);
+            ->mapWithKeys(fn (array $item): array => [
+                (int) $item['product_id'] => [
+                    'quantity' => (int) $item['quantity'],
+                ],
+            ]);
 
         $providerProducts = ProviderProduct::query()
             ->with('product')
@@ -103,6 +139,7 @@ class OrderController extends Controller
                     'public_id' => $publicId,
                     'order_number' => $nextOrderNumber,
                     'provider_id' => $provider->id,
+                    'customer_user_id' => $payload['customer_user_id'] ?? null,
                     'customer_email' => $payload['customer_email'],
                     'customer_signature_path' => $signaturePath,
                     'status' => OrderStatus::PENDING,
@@ -114,15 +151,33 @@ class OrderController extends Controller
                 $subtotalOriginalInCents = 0;
                 $subtotalSpecialInCents = 0;
 
-                foreach ($itemsByProduct as $productId => $quantity) {
+                foreach ($itemsByProduct as $productId => $itemData) {
                     $providerProduct = $providerProducts->get($productId);
 
                     if ($providerProduct === null || $providerProduct->product === null) {
                         continue;
                     }
 
+                    $quantity = (int) ($itemData['quantity'] ?? 0);
+                    $discountPercent = round((float) $providerProduct->discount_value, 2);
+                    $packagingMultiple = max(1, (int) $providerProduct->product->packaging_multiple);
+
+                    if ($quantity < $packagingMultiple || $quantity % $packagingMultiple !== 0) {
+                        throw ValidationException::withMessages([
+                            'items' => sprintf(
+                                'La cantidad de %s debe ser minimo %d y multiplo de %d.',
+                                $providerProduct->product->name,
+                                $packagingMultiple,
+                                $packagingMultiple,
+                            ),
+                        ]);
+                    }
+
                     $originalUnitInCents = (int) round(((float) $providerProduct->product->original_price) * 100);
-                    $specialUnitInCents = (int) round(((float) $providerProduct->special_price) * 100);
+                    $specialUnitInCents = max(
+                        0,
+                        (int) round($originalUnitInCents * ((100 - $discountPercent) / 100)),
+                    );
 
                     $lineOriginalInCents = $originalUnitInCents * $quantity;
                     $lineSpecialInCents = $specialUnitInCents * $quantity;

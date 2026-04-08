@@ -7,6 +7,7 @@ use App\Models\Provider;
 use App\Models\ProviderProduct;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ProviderOrderCreatePageTest extends TestCase
@@ -36,13 +37,13 @@ class ProviderOrderCreatePageTest extends TestCase
 
         $response = $this->actingAs($provider->user)->get(route('provider.orders.create'));
 
-        $response->assertOk();
-        $response->assertSee('Crear pedidos');
-        $response->assertSee('Paso 1');
-        $response->assertSee('Paso 2');
-        $response->assertSee('Paso 3');
-        $response->assertSee($provider->company_name);
-        $response->assertSee($product->name);
+        $response
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('provider/orders/create')
+                ->where('providerWorkspace.provider.company_name', $provider->company_name)
+                ->has('providerWorkspace.products', 1)
+                ->where('providerWorkspace.products.0.product_name', $product->name));
     }
 
     public function test_non_provider_user_cannot_open_create_order_page(): void
@@ -54,5 +55,35 @@ class ProviderOrderCreatePageTest extends TestCase
         $response = $this->actingAs($admin)->get(route('provider.orders.create'));
 
         $response->assertForbidden();
+    }
+
+    public function test_provider_create_page_includes_registered_customers_list(): void
+    {
+        $provider = Provider::factory()->create([
+            'user_id' => User::factory()->create([
+                'role' => 'provider',
+            ])->id,
+        ]);
+
+        $customer = User::factory()->create([
+            'role' => 'cliente',
+            'name' => 'Cliente Demo',
+            'email' => 'cliente.demo@example.com',
+            'nit' => '900555111-2',
+            'business_name' => 'Cliente Demo SAS',
+            'supermarket_name' => 'Super Demo',
+            'city' => 'Cali',
+            'department' => 'Valle del Cauca',
+        ]);
+
+        $response = $this->actingAs($provider->user)->get(route('provider.orders.create'));
+
+        $response
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('provider/orders/create')
+                ->has('providerWorkspace.customers', 1)
+                ->where('providerWorkspace.customers.0.id', $customer->id)
+                ->where('providerWorkspace.customers.0.supermarket_name', 'Super Demo'));
     }
 }

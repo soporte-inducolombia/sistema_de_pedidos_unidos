@@ -59,9 +59,11 @@ class OrderConfirmedExportTest extends TestCase
             'Producto',
             'Codigo de barras',
             'Codigo',
-            'Descripcion',
             'Cantidad',
             'Cliente',
+            'Precio base',
+            'Precio rueda',
+            'Descuento',
             'Total',
         ], $export->headings());
 
@@ -74,9 +76,11 @@ class OrderConfirmedExportTest extends TestCase
             'Producto Demo',
             '7701234567890',
             'COD-DEMO-01',
-            'Descripcion del producto demo',
             2,
             'cliente@example.com',
+            '80.00',
+            '67.75',
+            '15.31',
             '135.50',
         ], $rows[0]);
     }

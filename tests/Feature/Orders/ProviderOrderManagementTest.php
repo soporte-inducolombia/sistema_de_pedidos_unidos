@@ -47,13 +47,16 @@ class ProviderOrderManagementTest extends TestCase
 
         $response = $this->actingAs($provider->user)->get(route('provider.orders.index'));
 
-        $response->assertOk();
-        $response->assertSee('Orden Nro');
-        $response->assertSee('1');
-        $response->assertSee($order->customer_email);
+        $response
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('provider/orders/index')
+                ->has('providerWorkspace.orders', 1)
+                ->where('providerWorkspace.orders.0.order_number', 1)
+                ->where('providerWorkspace.orders.0.customer_email', $order->customer_email));
     }
 
-    public function test_provider_only_receives_final_price_and_discount_percent_in_workspace(): void
+    public function test_provider_receives_order_workspace_with_base_price_default_discount_and_packaging(): void
     {
         $provider = Provider::factory()->create([
             'user_id' => User::factory()->create([
@@ -79,10 +82,11 @@ class ProviderOrderManagementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('provider/orders/create')
                 ->has('providerWorkspace.products', 1)
-                ->where('providerWorkspace.products.0.special_price', '80.00')
-                ->where('providerWorkspace.products.0.discount_percent', '20.00')
-                ->missing('providerWorkspace.products.0.original_price')
-                ->missing('providerWorkspace.products.0.discount_type'),
+                ->where('providerWorkspace.products.0.original_price', '100.00')
+                ->where('providerWorkspace.products.0.default_discount_percent', '20.00')
+                ->where('providerWorkspace.products.0.packaging_multiple', 1)
+                ->missing('providerWorkspace.products.0.code')
+                ->missing('providerWorkspace.products.0.barcode'),
             );
     }
 
@@ -104,6 +108,7 @@ class ProviderOrderManagementTest extends TestCase
         $providerProduct = ProviderProduct::factory()->create([
             'provider_id' => $provider->id,
             'product_id' => $product->id,
+            'discount_value' => 20,
             'special_price' => 80,
             'is_active' => true,
         ]);
@@ -149,6 +154,7 @@ class ProviderOrderManagementTest extends TestCase
                 [
                     'product_id' => $product->id,
                     'quantity' => 3,
+                    'discount_percent' => 25,
                 ],
             ],
         ]);
@@ -167,6 +173,7 @@ class ProviderOrderManagementTest extends TestCase
             'order_id' => $order->id,
             'product_id' => $product->id,
             'quantity' => 3,
+            'unit_special_price' => '80.00',
         ]);
 
         Storage::disk('local')->assertMissing($oldSignaturePath);
@@ -235,6 +242,7 @@ class ProviderOrderManagementTest extends TestCase
                 [
                     'product_id' => $product->id,
                     'quantity' => 2,
+                    'discount_percent' => 20,
                 ],
             ],
         ]);

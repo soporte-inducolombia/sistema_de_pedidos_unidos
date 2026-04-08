@@ -7,6 +7,7 @@ use App\Models\Provider;
 use App\Models\ProviderProduct;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ProviderProductManagementTest extends TestCase
@@ -96,6 +97,80 @@ class ProviderProductManagementTest extends TestCase
         $response = $this->actingAs($provider)->get(route('admin.provider-products.index'));
 
         $response->assertForbidden();
+    }
+
+    public function test_assignment_wizard_only_exposes_unassigned_products_per_provider(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $firstProvider = Provider::factory()->create();
+        $secondProvider = Provider::factory()->create();
+
+        $firstProduct = Product::factory()->create([
+            'name' => 'Producto A',
+        ]);
+        $secondProduct = Product::factory()->create([
+            'name' => 'Producto B',
+        ]);
+        $thirdProduct = Product::factory()->create([
+            'name' => 'Producto C',
+        ]);
+
+        ProviderProduct::factory()->create([
+            'provider_id' => $firstProvider->id,
+            'product_id' => $firstProduct->id,
+        ]);
+
+        ProviderProduct::factory()->create([
+            'provider_id' => $secondProvider->id,
+            'product_id' => $secondProduct->id,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.provider-products.index'));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('admin/provider-products/index')
+            ->where('available_product_ids_by_provider.'.$firstProvider->id, [
+                $thirdProduct->id,
+            ])
+            ->where('available_product_ids_by_provider.'.$secondProvider->id, [
+                $thirdProduct->id,
+            ]));
+    }
+
+    public function test_admin_cannot_assign_a_product_already_assigned_to_another_provider(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $firstProvider = Provider::factory()->create();
+        $secondProvider = Provider::factory()->create();
+        $product = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+
+        ProviderProduct::factory()->create([
+            'provider_id' => $firstProvider->id,
+            'product_id' => $product->id,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $secondProvider->id,
+            'product_id' => $product->id,
+            'original_price' => '100',
+            'discount_value' => '10',
+            'is_active' => true,
+        ]);
+
+        $response->assertSessionHasErrors('product_id');
+
+        $this->assertSame(
+            1,
+            ProviderProduct::query()->where('product_id', $product->id)->count(),
+        );
     }
 
     public function test_admin_can_create_update_and_delete_provider_product_assignment(): void
@@ -293,6 +368,86 @@ class ProviderProductManagementTest extends TestCase
             'discount_type' => 'percent',
             'discount_value' => 20,
             'special_price' => 200,
+        ]);
+    }
+
+    public function test_admin_can_define_individual_discount_percent_for_each_bulk_product(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $firstProduct = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+        $secondProduct = Product::factory()->create([
+            'original_price' => 250,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_ids' => [$firstProduct->id, $secondProduct->id],
+            'product_discounts' => [
+                ['product_id' => $firstProduct->id, 'discount_value' => '10'],
+                ['product_id' => $secondProduct->id, 'discount_value' => '35'],
+            ],
+            'is_active' => true,
+        ]);
+
+        $response->assertRedirect(route('admin.provider-products.index'));
+        $response->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $firstProduct->id,
+            'discount_type' => 'percent',
+            'discount_value' => 10,
+            'special_price' => 90,
+        ]);
+
+        $this->assertDatabaseHas('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $secondProduct->id,
+            'discount_type' => 'percent',
+            'discount_value' => 35,
+            'special_price' => 162.5,
+        ]);
+    }
+
+    public function test_admin_cannot_create_bulk_assignment_without_discount_for_each_product(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        $provider = Provider::factory()->create();
+        $firstProduct = Product::factory()->create([
+            'original_price' => 100,
+        ]);
+        $secondProduct = Product::factory()->create([
+            'original_price' => 120,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.provider-products.store'), [
+            'provider_id' => $provider->id,
+            'product_ids' => [$firstProduct->id, $secondProduct->id],
+            'product_discounts' => [
+                ['product_id' => $firstProduct->id, 'discount_value' => '15'],
+            ],
+            'is_active' => true,
+        ]);
+
+        $response->assertSessionHasErrors('product_discounts');
+
+        $this->assertDatabaseMissing('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $firstProduct->id,
+        ]);
+
+        $this->assertDatabaseMissing('provider_products', [
+            'provider_id' => $provider->id,
+            'product_id' => $secondProduct->id,
         ]);
     }
 

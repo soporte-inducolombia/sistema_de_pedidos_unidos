@@ -71,7 +71,7 @@ export function AppSidebar() {
         });
     }
 
-    if (auth.user.role === 'provider') {
+    if (auth.user.role === 'provider' || auth.user.role === 'proveedor') {
         mainNavItems.push({
             title: 'Pedidos',
             href: providerOrdersIndex(),

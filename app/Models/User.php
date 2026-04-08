@@ -13,7 +13,19 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'username', 'password', 'role'])]
+#[Fillable([
+    'name',
+    'email',
+    'username',
+    'password',
+    'role',
+    'nit',
+    'business_name',
+    'supermarket_name',
+    'address',
+    'city',
+    'department',
+])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -46,6 +58,11 @@ class User extends Authenticatable
 
     public function isProvider(): bool
     {
-        return $this->role === 'provider';
+        return in_array($this->role, ['provider', 'proveedor'], true);
+    }
+
+    public function isCustomer(): bool
+    {
+        return in_array($this->role, ['cliente', 'client'], true);
     }
 }

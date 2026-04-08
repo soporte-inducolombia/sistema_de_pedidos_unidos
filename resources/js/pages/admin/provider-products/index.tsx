@@ -27,6 +27,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { formatCopCurrency } from '@/lib/utils';
 import { destroy, index, store, update } from '@/routes/admin/provider-products';
 
 type Assignment = {
@@ -56,10 +57,16 @@ type ProductOption = {
     original_price: string;
 };
 
+type ProductDiscountInput = {
+    product_id: number;
+    discount_value: string;
+};
+
 type Props = {
     assignments: Assignment[];
     providers: ProviderOption[];
     products: ProductOption[];
+    available_product_ids_by_provider: Record<string, number[]>;
     status?: string;
 };
 
@@ -100,13 +107,7 @@ const resolveDiscountPercentValue = (originalPrice: string, specialPrice: string
 };
 
 const formatCurrencyLabel = (value: string): string => {
-    const parsedValue = parseDecimal(value);
-
-    if (parsedValue === null) {
-        return '$0.00';
-    }
-
-    return `$${parsedValue.toFixed(2)}`;
+    return formatCopCurrency(value);
 };
 
 function EditableAssignmentCard({
@@ -255,7 +256,7 @@ function EditableAssignmentCard({
                         variant="outline"
                         className="border-amber-500/30 bg-amber-500/5"
                     >
-                        Precio especial: ${assignment.special_price}
+                        Precio especial: {formatCurrencyLabel(assignment.special_price)}
                     </Badge>
                 </div>
 
@@ -299,7 +300,7 @@ function EditableAssignmentCard({
                                 Precio original
                             </p>
                             <p className="mt-1 font-medium text-foreground">
-                                ${assignment.product_original_price ?? '0.00'}
+                                {formatCurrencyLabel(assignment.product_original_price ?? '0.00')}
                             </p>
                         </div>
                         <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
@@ -465,7 +466,7 @@ function EditableAssignmentCard({
 
                         <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
                             <p className="text-xs text-muted-foreground">Precio especial estimado</p>
-                            <p className="font-medium">${form.data.special_price || '0.00'}</p>
+                            <p className="font-medium">{formatCurrencyLabel(form.data.special_price || '0.00')}</p>
                         </div>
 
                         <label className="flex items-center gap-2 text-sm font-medium">
@@ -504,6 +505,7 @@ export default function ProviderProductsIndex({
     assignments,
     providers,
     products,
+    available_product_ids_by_provider: availableProductIdsByProvider,
     status,
 }: Props) {
     const [search, setSearch] = useState('');
@@ -519,6 +521,7 @@ export default function ProviderProductsIndex({
         original_price: string;
         discount_value: string;
         special_price: string;
+        product_discounts: ProductDiscountInput[];
         is_active: boolean;
     }>({
         provider_id: providers[0]?.id ?? '',
@@ -526,6 +529,7 @@ export default function ProviderProductsIndex({
         original_price: '',
         discount_value: '0',
         special_price: '',
+        product_discounts: [],
         is_active: true,
     });
 
@@ -559,24 +563,57 @@ export default function ProviderProductsIndex({
         });
     }, [providerSearchTerm, providers]);
 
+    const availableProductsForCreate = useMemo(() => {
+        if (createForm.data.provider_id === '') {
+            return [];
+        }
+
+        const availableProductIds =
+            availableProductIdsByProvider[String(createForm.data.provider_id)] ??
+            products.map((product) => product.id);
+        const availableProductIdsSet = new Set(availableProductIds);
+
+        return products.filter((product) => availableProductIdsSet.has(product.id));
+    }, [availableProductIdsByProvider, createForm.data.provider_id, products]);
+
     const filteredProductsForCreate = useMemo(() => {
         const term = productSearchTerm.trim().toLowerCase();
 
         if (!term) {
-            return products;
+            return availableProductsForCreate;
         }
 
-        return products.filter((product) => {
+        return availableProductsForCreate.filter((product) => {
             return (
                 product.name.toLowerCase().includes(term) ||
                 product.code.toLowerCase().includes(term) ||
                 product.barcode.toLowerCase().includes(term)
             );
         });
-    }, [productSearchTerm, products]);
+    }, [availableProductsForCreate, productSearchTerm]);
 
     const selectProviderForCreate = (providerId: number) => {
         createForm.setData('provider_id', providerId);
+
+        const nextAvailableProductIds =
+            availableProductIdsByProvider[String(providerId)] ?? products.map((product) => product.id);
+        const nextAvailableProductIdsSet = new Set(nextAvailableProductIds);
+        const nextProductIds = createForm.data.product_ids.filter((productId) =>
+            nextAvailableProductIdsSet.has(productId),
+        );
+
+        if (nextProductIds.length !== createForm.data.product_ids.length) {
+            createForm.setData('product_ids', nextProductIds);
+            syncCreateProductDiscounts(nextProductIds);
+
+            if (nextProductIds.length !== 1) {
+                createForm.setData('original_price', '');
+            }
+
+            if (nextProductIds.length === 0) {
+                createForm.setData('special_price', '');
+            }
+        }
     };
 
     const resolvePricingPreviewOriginal = (): string => {
@@ -591,6 +628,64 @@ export default function ProviderProductsIndex({
         return createForm.data.original_price;
     };
 
+    const syncCreateProductDiscounts = (nextProductIds: number[]) => {
+        const previousDiscountsByProductId = new Map(
+            createForm.data.product_discounts.map((discount) => [
+                discount.product_id,
+                discount.discount_value,
+            ]),
+        );
+
+        createForm.setData(
+            'product_discounts',
+            nextProductIds.map((productId) => ({
+                product_id: productId,
+                discount_value:
+                    previousDiscountsByProductId.get(productId) ?? createForm.data.discount_value,
+            })),
+        );
+    };
+
+    const resolveCreateProductDiscountValue = (productId: number): string => {
+        const productDiscount = createForm.data.product_discounts.find(
+            (discount) => discount.product_id === productId,
+        );
+
+        return productDiscount?.discount_value ?? createForm.data.discount_value;
+    };
+
+    const handleCreateProductDiscountChange = (productId: number, discountValue: string) => {
+        const hasExistingDiscount = createForm.data.product_discounts.some(
+            (discount) => discount.product_id === productId,
+        );
+
+        if (!hasExistingDiscount) {
+            createForm.setData('product_discounts', [
+                ...createForm.data.product_discounts,
+                {
+                    product_id: productId,
+                    discount_value: discountValue,
+                },
+            ]);
+
+            return;
+        }
+
+        createForm.setData(
+            'product_discounts',
+            createForm.data.product_discounts.map((discount) => {
+                if (discount.product_id !== productId) {
+                    return discount;
+                }
+
+                return {
+                    ...discount,
+                    discount_value: discountValue,
+                };
+            }),
+        );
+    };
+
     const toggleProductForCreate = (productId: number) => {
         const isSelected = createForm.data.product_ids.includes(productId);
         const nextProductIds = isSelected
@@ -598,6 +693,7 @@ export default function ProviderProductsIndex({
             : [...createForm.data.product_ids, productId];
 
         createForm.setData('product_ids', nextProductIds);
+        syncCreateProductDiscounts(nextProductIds);
 
         if (nextProductIds.length === 1) {
             const nextProduct = products.find((product) => product.id === nextProductIds[0]);
@@ -644,6 +740,7 @@ export default function ProviderProductsIndex({
         );
 
         createForm.setData('product_ids', mergedProductIds);
+    syncCreateProductDiscounts(mergedProductIds);
 
         if (mergedProductIds.length === 1) {
             const selectedOnlyProduct = products.find((product) => product.id === mergedProductIds[0]);
@@ -681,6 +778,7 @@ export default function ProviderProductsIndex({
         createForm.setData('product_ids', []);
         createForm.setData('original_price', '');
         createForm.setData('special_price', '');
+        createForm.setData('product_discounts', []);
         setCreateFlowError(null);
     };
 
@@ -739,6 +837,10 @@ export default function ProviderProductsIndex({
             }
         }
 
+        if (selectedProducts.length > 1) {
+            syncCreateProductDiscounts(selectedProducts.map((product) => product.id));
+        }
+
         if (selectedProducts.length > 1 && createPricingMode === 'special') {
             setCreatePricingMode('percent');
             createForm.setData('special_price', '');
@@ -766,12 +868,34 @@ export default function ProviderProductsIndex({
         }
 
         if (createPricingMode === 'percent') {
-            const discountPercent = parseDecimal(createForm.data.discount_value);
+            if (isBulkCreateMode) {
+                const invalidProduct = selectedProducts.find((product) => {
+                    const productDiscountPercent = parseDecimal(
+                        resolveCreateProductDiscountValue(product.id),
+                    );
 
-            if (discountPercent === null || discountPercent < 0 || discountPercent > 100) {
-                setCreateFlowError('Ingresa un descuento % valido entre 0 y 100.');
+                    return (
+                        productDiscountPercent === null ||
+                        productDiscountPercent < 0 ||
+                        productDiscountPercent > 100
+                    );
+                });
 
-                return;
+                if (invalidProduct !== undefined) {
+                    setCreateFlowError(
+                        `Ingresa un descuento % valido entre 0 y 100 para ${invalidProduct.name}.`,
+                    );
+
+                    return;
+                }
+            } else {
+                const discountPercent = parseDecimal(createForm.data.discount_value);
+
+                if (discountPercent === null || discountPercent < 0 || discountPercent > 100) {
+                    setCreateFlowError('Ingresa un descuento % valido entre 0 y 100.');
+
+                    return;
+                }
             }
         } else {
             const specialPrice = parseDecimal(createForm.data.special_price);
@@ -821,6 +945,7 @@ export default function ProviderProductsIndex({
         createForm.setData('original_price', '');
         createForm.setData('discount_value', '0');
         createForm.setData('special_price', '');
+        createForm.setData('product_discounts', []);
         createForm.setData('is_active', true);
         setCreatePricingMode('percent');
         setCreateStep(1);
@@ -848,6 +973,13 @@ export default function ProviderProductsIndex({
             provider_id: Number(data.provider_id),
             product_ids: data.product_ids,
             is_active: data.is_active,
+            ...(!isSingleSelection
+                ? {
+                      product_discounts: data.product_discounts.filter((discount) =>
+                          data.product_ids.includes(discount.product_id),
+                      ),
+                  }
+                : {}),
             ...(isSingleSelection ? { original_price: data.original_price } : {}),
             ...(!isSingleSelection || createPricingMode === 'percent'
                 ? { discount_value: data.discount_value }
@@ -1055,7 +1187,7 @@ export default function ProviderProductsIndex({
                                                     onChange={(event) =>
                                                         setProductSearchTerm(event.target.value)
                                                     }
-                                                    placeholder="Nombre, codigo o barras"
+                                                    placeholder="Nombre"
                                                     className="pl-9"
                                                 />
                                             </div>
@@ -1149,7 +1281,7 @@ export default function ProviderProductsIndex({
                                                                         {product.name}
                                                                     </p>
                                                                     <p className="text-xs text-muted-foreground">
-                                                                        {product.code} • {product.barcode}
+                                                                        Precio base: {formatCurrencyLabel(product.original_price)}
                                                                     </p>
                                                                 </div>
                                                                 {isSelected && (
@@ -1162,7 +1294,9 @@ export default function ProviderProductsIndex({
 
                                                 {filteredProductsForCreate.length === 0 && (
                                                     <p className="rounded-md border border-dashed px-3 py-3 text-xs text-muted-foreground">
-                                                        No hay productos para este filtro.
+                                                        {availableProductsForCreate.length === 0
+                                                            ? 'Todos los productos ya estan asignados para este proveedor.'
+                                                            : 'No hay productos para este filtro.'}
                                                     </p>
                                                 )}
                                             </div>
@@ -1267,95 +1401,131 @@ export default function ProviderProductsIndex({
                                         </div>
                                     </div>
 
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        {createPricingMode === 'percent' || isBulkCreateMode ? (
-                                            <div className="space-y-2">
-                                                <label
-                                                    htmlFor="new-assignment-discount-value"
-                                                    className="text-sm font-medium"
-                                                >
-                                                    Descuento (%)
-                                                </label>
-                                                <Input
-                                                    id="new-assignment-discount-value"
-                                                    value={createForm.data.discount_value}
-                                                    onChange={(event) =>
-                                                        handleCreateDiscountPercentChange(
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                    inputMode="decimal"
-                                                />
-                                                <InputError message={createForm.errors.discount_value} />
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                <label
-                                                    htmlFor="new-assignment-special-price"
-                                                    className="text-sm font-medium"
-                                                >
-                                                    Precio especial
-                                                </label>
-                                                <Input
-                                                    id="new-assignment-special-price"
-                                                    value={createForm.data.special_price}
-                                                    onChange={(event) =>
-                                                        handleCreateSpecialPriceChange(
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                    inputMode="decimal"
-                                                />
-                                                <InputError message={createForm.errors.special_price} />
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-3 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">Descuento resultante</p>
-                                                <p className="font-medium">{createForm.data.discount_value || '0.00'}%</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">Precio especial estimado</p>
-                                                <p className="font-medium">
-                                                    {isBulkCreateMode
-                                                        ? 'Se muestra por producto en la vista previa'
-                                                        : createPricingMode === 'percent'
-                                                        ? formatCurrencyLabel(createForm.data.special_price)
-                                                        : createForm.data.special_price
-                                                          ? formatCurrencyLabel(createForm.data.special_price)
-                                                          : 'Se calcula por producto'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {isBulkCreateMode && (
+                                    {isBulkCreateMode ? (
                                         <div className="space-y-3 rounded-lg border border-slate-200/70 p-3 dark:border-slate-800">
                                             <p className="text-sm font-medium text-foreground">
-                                                Vista previa para {selectedProducts.length} productos
+                                                Configura descuento individual por producto
                                             </p>
-                                            <div className="max-h-56 space-y-2 overflow-auto pr-1">
-                                                {selectedProducts.map((product) => (
-                                                    <div
-                                                        key={product.id}
-                                                        className="grid gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs md:grid-cols-3"
+                                            <p className="text-xs text-muted-foreground">
+                                                Define un porcentaje para cada producto seleccionado.
+                                            </p>
+                                            <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                                                {selectedProducts.map((product) => {
+                                                    const productDiscountValue =
+                                                        resolveCreateProductDiscountValue(product.id);
+
+                                                    return (
+                                                        <div
+                                                            key={product.id}
+                                                            className="grid gap-3 rounded-md border bg-muted/20 px-3 py-2 text-xs md:grid-cols-[2fr_1fr_1.2fr_1.2fr]"
+                                                        >
+                                                            <div>
+                                                                <p className="font-medium text-foreground">
+                                                                    {product.name}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-muted-foreground">Precio original</p>
+                                                                <p className="text-foreground">
+                                                                    {formatCurrencyLabel(product.original_price)}
+                                                                </p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label
+                                                                    htmlFor={`new-assignment-discount-value-${product.id}`}
+                                                                    className="text-muted-foreground"
+                                                                >
+                                                                    Descuento (%)
+                                                                </label>
+                                                                <Input
+                                                                    id={`new-assignment-discount-value-${product.id}`}
+                                                                    value={productDiscountValue}
+                                                                    onChange={(event) =>
+                                                                        handleCreateProductDiscountChange(
+                                                                            product.id,
+                                                                            event.target.value,
+                                                                        )
+                                                                    }
+                                                                    inputMode="decimal"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-muted-foreground">Especial estimado</p>
+                                                                <p className="text-foreground">
+                                                                    {formatCurrencyLabel(
+                                                                        resolveSpecialPriceValue(
+                                                                            product.original_price,
+                                                                            productDiscountValue,
+                                                                        ),
+                                                                    )}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <InputError message={createForm.errors.product_discounts} />
+                                            <InputError message={createForm.errors.discount_value} />
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            {createPricingMode === 'percent' ? (
+                                                <div className="space-y-2">
+                                                    <label
+                                                        htmlFor="new-assignment-discount-value"
+                                                        className="text-sm font-medium"
                                                     >
-                                                        <p className="font-medium text-foreground">{product.name}</p>
-                                                        <p className="text-muted-foreground">
-                                                            Original: {formatCurrencyLabel(product.original_price)}
-                                                        </p>
-                                                        <p className="text-foreground">
-                                                            Especial estimado:{' '}
-                                                            {formatCurrencyLabel(
-                                                                resolveSpecialPriceValue(
-                                                                    product.original_price,
-                                                                    createForm.data.discount_value,
-                                                                ),
-                                                            )}
-                                                        </p>
-                                                    </div>
-                                                ))}
+                                                        Descuento (%)
+                                                    </label>
+                                                    <Input
+                                                        id="new-assignment-discount-value"
+                                                        value={createForm.data.discount_value}
+                                                        onChange={(event) =>
+                                                            handleCreateDiscountPercentChange(
+                                                                event.target.value,
+                                                            )
+                                                        }
+                                                        inputMode="decimal"
+                                                    />
+                                                    <InputError message={createForm.errors.discount_value} />
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    <label
+                                                        htmlFor="new-assignment-special-price"
+                                                        className="text-sm font-medium"
+                                                    >
+                                                        Precio especial
+                                                    </label>
+                                                    <Input
+                                                        id="new-assignment-special-price"
+                                                        value={createForm.data.special_price}
+                                                        onChange={(event) =>
+                                                            handleCreateSpecialPriceChange(
+                                                                event.target.value,
+                                                            )
+                                                        }
+                                                        inputMode="decimal"
+                                                    />
+                                                    <InputError message={createForm.errors.special_price} />
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-3 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Descuento resultante</p>
+                                                    <p className="font-medium">{createForm.data.discount_value || '0.00'}%</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Precio especial estimado</p>
+                                                    <p className="font-medium">
+                                                        {createPricingMode === 'percent'
+                                                            ? formatCurrencyLabel(createForm.data.special_price)
+                                                            : createForm.data.special_price
+                                                              ? formatCurrencyLabel(createForm.data.special_price)
+                                                              : 'Se calcula por producto'}
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -1417,7 +1587,9 @@ export default function ProviderProductsIndex({
                                         <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
                                             <p className="text-xs text-muted-foreground">Descuento final</p>
                                             <p className="font-medium text-foreground">
-                                                {createForm.data.discount_value || '0.00'}%
+                                                {isBulkCreateMode
+                                                    ? 'Individual por producto'
+                                                    : `${createForm.data.discount_value || '0.00'}%`}
                                             </p>
                                         </div>
                                         <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
@@ -1436,26 +1608,34 @@ export default function ProviderProductsIndex({
                                                 Productos que se crearan
                                             </p>
                                             <div className="max-h-56 space-y-2 overflow-auto pr-1">
-                                                {selectedProducts.map((product) => (
-                                                    <div
-                                                        key={product.id}
-                                                        className="grid gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs md:grid-cols-3"
-                                                    >
-                                                        <p className="font-medium text-foreground">{product.name}</p>
-                                                        <p className="text-muted-foreground">
-                                                            Original: {formatCurrencyLabel(product.original_price)}
-                                                        </p>
-                                                        <p className="text-foreground">
-                                                            Especial:{' '}
-                                                            {formatCurrencyLabel(
-                                                                resolveSpecialPriceValue(
-                                                                    product.original_price,
-                                                                    createForm.data.discount_value,
-                                                                ),
-                                                            )}
-                                                        </p>
-                                                    </div>
-                                                ))}
+                                                {selectedProducts.map((product) => {
+                                                    const productDiscountValue =
+                                                        resolveCreateProductDiscountValue(product.id);
+
+                                                    return (
+                                                        <div
+                                                            key={product.id}
+                                                            className="grid gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs md:grid-cols-4"
+                                                        >
+                                                            <p className="font-medium text-foreground">{product.name}</p>
+                                                            <p className="text-muted-foreground">
+                                                                Original: {formatCurrencyLabel(product.original_price)}
+                                                            </p>
+                                                            <p className="text-foreground">
+                                                                Descuento: {productDiscountValue || '0.00'}%
+                                                            </p>
+                                                            <p className="text-foreground">
+                                                                Especial:{' '}
+                                                                {formatCurrencyLabel(
+                                                                    resolveSpecialPriceValue(
+                                                                        product.original_price,
+                                                                        productDiscountValue,
+                                                                    ),
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
@@ -1469,6 +1649,7 @@ export default function ProviderProductsIndex({
 
                                     <InputError message={createForm.errors.provider_id} />
                                     <InputError message={createForm.errors.product_ids} />
+                                    <InputError message={createForm.errors.product_discounts} />
                                     <InputError message={createForm.errors.original_price} />
                                     <InputError message={createForm.errors.discount_value} />
                                     <InputError message={createForm.errors.special_price} />

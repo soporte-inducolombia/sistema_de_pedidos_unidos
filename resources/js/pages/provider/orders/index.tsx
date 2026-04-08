@@ -1,6 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import {
     Eye,
+    Minus,
     PencilLine,
     Plus,
     RefreshCw,
@@ -44,16 +45,16 @@ type ProviderWorkspace = {
         id: number;
         product_id: number;
         product_name: string | null;
-        code: string | null;
-        barcode: string | null;
-        special_price: string;
-        discount_percent: string;
+        original_price: string;
+        default_discount_percent: string;
+        packaging_multiple: number;
     }[];
     orders: {
         public_id: string;
         order_number: number;
         status: string;
         customer_email: string;
+        subtotal_original: string;
         subtotal_special: string;
         total_discount: string;
         created_at: string | null;
@@ -69,18 +70,32 @@ type ProviderWorkspace = {
             id: number;
             product_id: number | null;
             product_name: string;
-            code: string | null;
             quantity: number;
+            unit_original_price: string;
             unit_special_price: string;
+            discount_percent: string;
             line_special_total: string;
         }[];
     }[];
+};
+
+type EditableItemState = {
+    quantity: number;
 };
 
 type Props = {
     status?: string;
     pendingOtpOrderPublicId?: string | null;
     providerWorkspace: ProviderWorkspace;
+};
+
+const currencyFormatter = new Intl.NumberFormat('es-CO', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+
+const formatCurrency = (value: number): string => {
+    return currencyFormatter.format(value);
 };
 
 const formatDateTime = (value: string | null): string => {
@@ -107,6 +122,41 @@ const getStatusLabel = (status: string): string => {
     return status;
 };
 
+const normalizeDiscountPercent = (value: number): number => {
+    if (Number.isNaN(value)) {
+        return 0;
+    }
+
+    return Math.min(100, Math.max(0, Math.round(value * 100) / 100));
+};
+
+const normalizeQuantity = (value: number, packagingMultiple: number): number => {
+    if (Number.isNaN(value) || value <= 0) {
+        return 0;
+    }
+
+    const safePackaging = Math.max(1, packagingMultiple);
+    const roundedValue = Math.round(value);
+
+    if (roundedValue <= safePackaging) {
+        return safePackaging;
+    }
+
+    const remainder = roundedValue % safePackaging;
+
+    if (remainder === 0) {
+        return roundedValue;
+    }
+
+    return roundedValue + (safePackaging - remainder);
+};
+
+const calculateUnitSpecialPrice = (originalPrice: number, discountPercent: number): number => {
+    const factor = (100 - normalizeDiscountPercent(discountPercent)) / 100;
+
+    return Math.max(0, originalPrice * factor);
+};
+
 function EditableOrderCard({
     order,
     products,
@@ -122,16 +172,18 @@ function EditableOrderCard({
     const [hasSignatureError, setHasSignatureError] = useState(false);
     const [isOtpPanelDismissed, setIsOtpPanelDismissed] = useState(false);
 
-    const [quantities, setQuantities] = useState<Record<number, number>>(() => {
-        const initialQuantities: Record<number, number> = {};
+    const [editableItems, setEditableItems] = useState<Record<number, EditableItemState>>(() => {
+        const initialState: Record<number, EditableItemState> = {};
 
         order.items.forEach((item) => {
             if (item.product_id !== null) {
-                initialQuantities[item.product_id] = item.quantity;
+                initialState[item.product_id] = {
+                    quantity: item.quantity,
+                };
             }
         });
 
-        return initialQuantities;
+        return initialState;
     });
 
     const form = useForm<{
@@ -166,23 +218,34 @@ function EditableOrderCard({
 
     const selectedProducts = useMemo(() => {
         return products
-            .map((product) => ({
-                ...product,
-                quantity: quantities[product.product_id] ?? 0,
-            }))
-            .filter((product) => product.quantity > 0);
-    }, [products, quantities]);
+            .map((product) => {
+                const editable = editableItems[product.product_id];
+                const quantity = editable?.quantity ?? 0;
+                const discountPercent = Number(product.default_discount_percent);
+                const originalPrice = Number(product.original_price);
+                const unitSpecialPrice = calculateUnitSpecialPrice(originalPrice, discountPercent);
 
-    const estimatedTotal = selectedProducts.reduce((total, product) => {
-        return total + Number(product.special_price) * product.quantity;
+                return {
+                    ...product,
+                    quantity,
+                    discount_percent: normalizeDiscountPercent(discountPercent),
+                    unit_special_price: unitSpecialPrice,
+                    line_special_total: unitSpecialPrice * quantity,
+                    line_original_total: originalPrice * quantity,
+                };
+            })
+            .filter((product) => product.quantity > 0);
+    }, [products, editableItems]);
+
+    const estimatedOriginalTotal = selectedProducts.reduce((total, product) => {
+        return total + product.line_original_total;
     }, 0);
 
-    const handleQuantityChange = (productId: number, quantity: number) => {
-        setQuantities((current) => ({
-            ...current,
-            [productId]: Number.isNaN(quantity) ? 0 : Math.max(0, quantity),
-        }));
-    };
+    const estimatedSpecialTotal = selectedProducts.reduce((total, product) => {
+        return total + product.line_special_total;
+    }, 0);
+
+    const estimatedDiscountTotal = estimatedOriginalTotal - estimatedSpecialTotal;
 
     const toggleView = () => {
         setIsViewing((previous) => !previous);
@@ -195,6 +258,55 @@ function EditableOrderCard({
 
         setIsEditing((previous) => !previous);
         setIsViewing(true);
+    };
+
+    const updateItemQuantity = (productId: number, rawQuantity: number) => {
+        const product = products.find((item) => item.product_id === productId);
+
+        if (!product) {
+            return;
+        }
+
+        const safePackaging = Math.max(1, product.packaging_multiple);
+        const quantity = normalizeQuantity(rawQuantity, safePackaging);
+
+        setEditableItems((current) => ({
+            ...current,
+            [productId]: {
+                quantity,
+            },
+        }));
+    };
+
+    const increaseQuantity = (productId: number) => {
+        const product = products.find((item) => item.product_id === productId);
+
+        if (!product) {
+            return;
+        }
+
+        const safePackaging = Math.max(1, product.packaging_multiple);
+        const currentQuantity = editableItems[productId]?.quantity ?? 0;
+        updateItemQuantity(productId, currentQuantity + safePackaging);
+    };
+
+    const decreaseQuantity = (productId: number) => {
+        const product = products.find((item) => item.product_id === productId);
+
+        if (!product) {
+            return;
+        }
+
+        const safePackaging = Math.max(1, product.packaging_multiple);
+        const currentQuantity = editableItems[productId]?.quantity ?? 0;
+        const nextQuantity = currentQuantity - safePackaging;
+
+        setEditableItems((current) => ({
+            ...current,
+            [productId]: {
+                quantity: nextQuantity <= 0 ? 0 : nextQuantity,
+            },
+        }));
     };
 
     const submitUpdate = (event: FormEvent<HTMLFormElement>) => {
@@ -315,7 +427,7 @@ function EditableOrderCard({
 
             {isViewing && (
                 <CardContent className="space-y-4 border-t border-cyan-500/15 bg-background/80">
-                    <div className="grid gap-3 text-sm md:grid-cols-4">
+                    <div className="grid gap-3 text-sm md:grid-cols-5">
                         <div className="rounded-md border bg-muted/20 px-3 py-2">
                             <p className="text-xs text-muted-foreground">Creado</p>
                             <p className="font-medium">{formatDateTime(order.created_at)}</p>
@@ -325,12 +437,18 @@ function EditableOrderCard({
                             <p className="font-medium">{formatDateTime(order.confirmed_at)}</p>
                         </div>
                         <div className="rounded-md border bg-muted/20 px-3 py-2">
+                            <p className="text-xs text-muted-foreground">Base</p>
+                            <p className="font-medium">${formatCurrency(Number(order.subtotal_original))}</p>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 px-3 py-2">
                             <p className="text-xs text-muted-foreground">Total</p>
-                            <p className="font-medium">${order.subtotal_special}</p>
+                            <p className="font-medium">${formatCurrency(Number(order.subtotal_special))}</p>
                         </div>
                         <div className="rounded-md border bg-muted/20 px-3 py-2">
                             <p className="text-xs text-muted-foreground">Ahorro</p>
-                            <p className="font-medium">${order.total_discount}</p>
+                            <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                                ${formatCurrency(Number(order.total_discount))}
+                            </p>
                         </div>
                     </div>
 
@@ -360,14 +478,23 @@ function EditableOrderCard({
                                         key={item.id}
                                         className="rounded-md border bg-muted/20 px-3 py-2 text-xs"
                                     >
+                                        <p className="font-medium">{item.product_name}</p>
+                                        <p className="text-muted-foreground">
+                                            Cantidad: {item.quantity} • -{Number(item.discount_percent).toFixed(2)}%
+                                        </p>
+                                        <p className="text-muted-foreground">
+                                            {Number(item.discount_percent) > 0 ? (
+                                                <>
+                                                    <span className="line-through">
+                                                        ${formatCurrency(Number(item.unit_original_price))}
+                                                    </span>
+                                                    <span className="mx-1">{'->'}</span>
+                                                </>
+                                            ) : null}
+                                            Unitario ${formatCurrency(Number(item.unit_special_price))}
+                                        </p>
                                         <p className="font-medium">
-                                            {item.product_name} ({item.code ?? 'Sin codigo'})
-                                        </p>
-                                        <p className="text-muted-foreground">
-                                            Cantidad: {item.quantity}
-                                        </p>
-                                        <p className="text-muted-foreground">
-                                            Unitario: ${item.unit_special_price} • Total: ${item.line_special_total}
+                                            Total ${formatCurrency(Number(item.line_special_total))}
                                         </p>
                                     </div>
                                 ))}
@@ -426,51 +553,101 @@ function EditableOrderCard({
                             Si necesitas reemplazar la firma, dibuja una nueva. Si no, se conserva la firma actual.
                         </p>
 
-                        <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
-                            Productos seleccionados: {selectedProducts.length} | Total estimado: ${estimatedTotal.toFixed(2)}
+                        <div className="grid gap-3 rounded-md border bg-muted/20 px-3 py-2 text-sm md:grid-cols-3">
+                            <p>Seleccionados: <span className="font-medium">{selectedProducts.length}</span></p>
+                            <p>Total estimado: <span className="font-medium">${formatCurrency(estimatedSpecialTotal)}</span></p>
+                            <p>Ahorro: <span className="font-medium text-emerald-700 dark:text-emerald-300">${formatCurrency(estimatedDiscountTotal)}</span></p>
                         </div>
 
                         <div className="grid gap-3">
-                            {products.map((product) => (
-                                <div
-                                    key={product.id}
-                                    className={`grid items-center gap-3 rounded-md border p-3 md:grid-cols-[1fr_130px] ${
-                                        (quantities[product.product_id] ?? 0) > 0
-                                            ? 'border-cyan-500/50 bg-cyan-500/5'
-                                            : 'border-slate-200/80 bg-background dark:border-slate-800'
-                                    }`}
-                                >
-                                    <div>
-                                        <p className="font-medium">
-                                            {product.product_name} ({product.code})
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Barras {product.barcode ?? 'Sin barras'} • Especial ${product.special_price}
-                                        </p>
+                            {products.map((product) => {
+                                const editable = editableItems[product.product_id];
+                                const quantity = editable?.quantity ?? 0;
+                                const normalizedDiscount = normalizeDiscountPercent(Number(product.default_discount_percent));
+                                const originalPrice = Number(product.original_price);
+                                const unitSpecialPrice = calculateUnitSpecialPrice(originalPrice, normalizedDiscount);
+                                const safePackaging = Math.max(1, product.packaging_multiple);
+
+                                return (
+                                    <div
+                                        key={product.id}
+                                        className={`grid items-center gap-3 rounded-md border p-3 md:grid-cols-[1fr_260px] ${
+                                            quantity > 0
+                                                ? 'border-cyan-500/50 bg-cyan-500/5'
+                                                : 'border-slate-200/80 bg-background dark:border-slate-800'
+                                        }`}
+                                    >
+                                        <div className="space-y-1">
+                                            <p className="font-medium">{product.product_name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Embalaje x{safePackaging} • Minimo y step {safePackaging}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {normalizedDiscount > 0 ? (
+                                                    <>
+                                                        <span className="line-through">${formatCurrency(originalPrice)}</span>
+                                                        <span className="mx-1">{'->'}</span>
+                                                        <span className="font-medium text-foreground">
+                                                            ${formatCurrency(unitSpecialPrice)}
+                                                        </span>
+                                                        <span className="ml-2">(-{normalizedDiscount.toFixed(2)}%)</span>
+                                                    </>
+                                                ) : (
+                                                    <span className="font-medium text-foreground">
+                                                        ${formatCurrency(originalPrice)}
+                                                    </span>
+                                                )}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="rounded-md border bg-muted/20 px-2 py-1 text-xs">
+                                                <p className="text-muted-foreground">Descuento asignado</p>
+                                                <p className="font-medium text-foreground">{normalizedDiscount.toFixed(2)}%</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label
+                                                    htmlFor={`quantity-${order.public_id}-${product.product_id}`}
+                                                    className="text-xs text-muted-foreground"
+                                                >
+                                                    Cantidad
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        size="icon"
+                                                        variant="outline"
+                                                        onClick={() => decreaseQuantity(product.product_id)}
+                                                        disabled={quantity <= 0}
+                                                    >
+                                                        <Minus className="size-4" />
+                                                    </Button>
+                                                    <Input
+                                                        id={`quantity-${order.public_id}-${product.product_id}`}
+                                                        type="number"
+                                                        min={0}
+                                                        step={safePackaging}
+                                                        value={quantity}
+                                                        onChange={(event) =>
+                                                            updateItemQuantity(
+                                                                product.product_id,
+                                                                Number(event.target.value),
+                                                            )
+                                                        }
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        size="icon"
+                                                        variant="outline"
+                                                        onClick={() => increaseQuantity(product.product_id)}
+                                                    >
+                                                        <Plus className="size-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label
-                                            htmlFor={`quantity-${order.public_id}-${product.product_id}`}
-                                            className="text-xs text-muted-foreground"
-                                        >
-                                            Cantidad
-                                        </label>
-                                        <Input
-                                            id={`quantity-${order.public_id}-${product.product_id}`}
-                                            type="number"
-                                            min={0}
-                                            max={999}
-                                            value={quantities[product.product_id] ?? 0}
-                                            onChange={(event) =>
-                                                handleQuantityChange(
-                                                    product.product_id,
-                                                    Number(event.target.value),
-                                                )
-                                            }
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         {orderItemsError && (

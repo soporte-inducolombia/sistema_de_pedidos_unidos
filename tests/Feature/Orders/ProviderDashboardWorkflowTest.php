@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ProviderDashboardWorkflowTest extends TestCase
@@ -41,9 +42,13 @@ class ProviderDashboardWorkflowTest extends TestCase
 
         $response = $this->actingAs($provider->user)->get(route('dashboard'));
 
-        $response->assertOk();
-        $response->assertSee($provider->company_name);
-        $response->assertSee('Gestion de pedidos');
+        $response
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('dashboard')
+                ->where('providerWorkspace.provider.company_name', $provider->company_name)
+                ->has('providerWorkspace.metrics')
+                ->has('providerWorkspace.recent_orders'));
     }
 
     public function test_provider_can_create_order_from_dashboard_and_get_redirect(): void
@@ -74,6 +79,7 @@ class ProviderDashboardWorkflowTest extends TestCase
                 [
                     'product_id' => $product->id,
                     'quantity' => 2,
+                    'discount_percent' => 16.67,
                 ],
             ],
         ]);

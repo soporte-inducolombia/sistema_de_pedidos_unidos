@@ -49,7 +49,8 @@ class UpdateOrderRequest extends FormRequest
             ],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'distinct', 'exists:products,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:9999'],
+            'items.*.discount_percent' => ['sometimes', 'numeric', 'between:0,100'],
         ];
     }
 }

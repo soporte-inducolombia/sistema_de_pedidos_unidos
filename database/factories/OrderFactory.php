@@ -26,6 +26,7 @@ class OrderFactory extends Factory
             'public_id' => (string) Str::uuid(),
             'order_number' => null,
             'provider_id' => Provider::factory(),
+            'customer_user_id' => null,
             'customer_email' => fake()->safeEmail(),
             'status' => OrderStatus::PENDING,
             'subtotal_original' => 0,

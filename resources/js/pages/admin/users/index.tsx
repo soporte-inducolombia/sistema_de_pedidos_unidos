@@ -21,8 +21,15 @@ import type { UserRole } from '@/types';
 type ManagedUser = {
     id: number;
     name: string;
+    email: string | null;
     username: string;
     role: UserRole;
+    nit: string | null;
+    business_name: string | null;
+    supermarket_name: string | null;
+    address: string | null;
+    city: string | null;
+    department: string | null;
     created_at: string | null;
 };
 
@@ -43,6 +50,10 @@ type SharedPageProps = {
     };
 };
 
+const isCustomerRole = (role: string): boolean => {
+    return role === 'cliente' || role === 'client';
+};
+
 function EditableUserCard({
     user,
     roles,
@@ -57,17 +68,33 @@ function EditableUserCard({
 
     const form = useForm<{
         name: string;
+        email: string;
         username: string;
         role: UserRole;
+        nit: string;
+        business_name: string;
+        supermarket_name: string;
+        address: string;
+        city: string;
+        department: string;
         password: string;
         password_confirmation: string;
     }>({
         name: user.name,
+        email: user.email ?? '',
         username: user.username,
         role: user.role,
+        nit: user.nit ?? '',
+        business_name: user.business_name ?? '',
+        supermarket_name: user.supermarket_name ?? '',
+        address: user.address ?? '',
+        city: user.city ?? '',
+        department: user.department ?? '',
         password: '',
         password_confirmation: '',
     });
+
+    const isCustomer = isCustomerRole(form.data.role);
 
     const createdAtLabel = user.created_at
         ? new Date(user.created_at).toLocaleString()
@@ -78,8 +105,15 @@ function EditableUserCard({
 
         form.transform((data) => ({
             name: data.name,
+            email: data.email,
             username: data.username,
             role: data.role,
+            nit: data.nit,
+            business_name: data.business_name,
+            supermarket_name: data.supermarket_name,
+            address: data.address,
+            city: data.city,
+            department: data.department,
             ...(data.password.trim().length > 0
                 ? {
                       password: data.password,
@@ -171,7 +205,7 @@ function EditableUserCard({
             </CardHeader>
             {isViewing && (
                 <CardContent className="border-t border-cyan-500/15 bg-background/80">
-                    <div className="grid gap-4 text-sm md:grid-cols-3">
+                    <div className="grid gap-4 text-sm md:grid-cols-2 lg:grid-cols-4">
                         <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">
                                 Nombre
@@ -182,7 +216,9 @@ function EditableUserCard({
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">
                                 Usuario
                             </p>
-                            <p className="mt-1 font-medium text-foreground">@{user.username}</p>
+                            <p className="mt-1 font-medium text-foreground">
+                                {user.username ? `@${user.username}` : 'Sin usuario'}
+                            </p>
                         </div>
                         <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -190,7 +226,64 @@ function EditableUserCard({
                             </p>
                             <p className="mt-1 font-medium text-foreground">{user.role}</p>
                         </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Correo
+                            </p>
+                            <p className="mt-1 font-medium text-foreground">
+                                {user.email ?? 'Sin correo'}
+                            </p>
+                        </div>
                     </div>
+
+                    {isCustomerRole(user.role) && (
+                        <div className="mt-4 grid gap-4 text-sm md:grid-cols-2 lg:grid-cols-3">
+                            <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    NIT
+                                </p>
+                                <p className="mt-1 font-medium text-foreground">{user.nit ?? 'Sin dato'}</p>
+                            </div>
+                            <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    Razon social
+                                </p>
+                                <p className="mt-1 font-medium text-foreground">
+                                    {user.business_name ?? 'Sin dato'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    Supermercado
+                                </p>
+                                <p className="mt-1 font-medium text-foreground">
+                                    {user.supermarket_name ?? 'Sin dato'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    Direccion
+                                </p>
+                                <p className="mt-1 font-medium text-foreground">
+                                    {user.address ?? 'Sin dato'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    Ciudad
+                                </p>
+                                <p className="mt-1 font-medium text-foreground">{user.city ?? 'Sin dato'}</p>
+                            </div>
+                            <div className="rounded-lg border border-slate-200/70 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    Departamento
+                                </p>
+                                <p className="mt-1 font-medium text-foreground">
+                                    {user.department ?? 'Sin dato'}
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {currentUserId === user.id && (
                         <p className="mt-3 text-xs text-muted-foreground">
@@ -223,10 +316,30 @@ function EditableUserCard({
 
                             <div className="space-y-2">
                                 <label
+                                    htmlFor={`email-${user.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Correo (opcional)
+                                </label>
+                                <Input
+                                    id={`email-${user.id}`}
+                                    type="email"
+                                    value={form.data.email}
+                                    onChange={(event) =>
+                                        form.setData('email', event.target.value)
+                                    }
+                                />
+                                <InputError message={form.errors.email} />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <label
                                     htmlFor={`username-${user.id}`}
                                     className="text-sm font-medium"
                                 >
-                                    Usuario
+                                    Usuario {isCustomer ? '(opcional)' : ''}
                                 </label>
                                 <Input
                                     id={`username-${user.id}`}
@@ -238,34 +351,131 @@ function EditableUserCard({
                                 />
                                 <InputError message={form.errors.username} />
                                 <p className="text-xs text-muted-foreground">
-                                    Este usuario se usa para iniciar sesion.
+                                    {isCustomer
+                                        ? 'Para clientes informativos puedes dejar este campo vacio.'
+                                        : 'Este usuario se usa para iniciar sesion.'}
                                 </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor={`role-${user.id}`}
+                                    className="text-sm font-medium"
+                                >
+                                    Rol
+                                </label>
+                                <select
+                                    id={`role-${user.id}`}
+                                    value={form.data.role}
+                                    onChange={(event) =>
+                                        form.setData('role', event.target.value as UserRole)
+                                    }
+                                    className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {roles.map((role) => (
+                                        <option key={role} value={role}>
+                                            {role}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={form.errors.role} />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <label
-                                htmlFor={`role-${user.id}`}
-                                className="text-sm font-medium"
-                            >
-                                Rol
-                            </label>
-                            <select
-                                id={`role-${user.id}`}
-                                value={form.data.role}
-                                onChange={(event) =>
-                                    form.setData('role', event.target.value as UserRole)
-                                }
-                                className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                {roles.map((role) => (
-                                    <option key={role} value={role}>
-                                        {role}
-                                    </option>
-                                ))}
-                            </select>
-                            <InputError message={form.errors.role} />
-                        </div>
+                        {isCustomer && (
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                <div className="space-y-2">
+                                    <label htmlFor={`nit-${user.id}`} className="text-sm font-medium">
+                                        NIT
+                                    </label>
+                                    <Input
+                                        id={`nit-${user.id}`}
+                                        value={form.data.nit}
+                                        onChange={(event) =>
+                                            form.setData('nit', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={form.errors.nit} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label
+                                        htmlFor={`business-name-${user.id}`}
+                                        className="text-sm font-medium"
+                                    >
+                                        Razon social
+                                    </label>
+                                    <Input
+                                        id={`business-name-${user.id}`}
+                                        value={form.data.business_name}
+                                        onChange={(event) =>
+                                            form.setData('business_name', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={form.errors.business_name} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label
+                                        htmlFor={`supermarket-name-${user.id}`}
+                                        className="text-sm font-medium"
+                                    >
+                                        Nombre supermercado
+                                    </label>
+                                    <Input
+                                        id={`supermarket-name-${user.id}`}
+                                        value={form.data.supermarket_name}
+                                        onChange={(event) =>
+                                            form.setData('supermarket_name', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={form.errors.supermarket_name} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label
+                                        htmlFor={`address-${user.id}`}
+                                        className="text-sm font-medium"
+                                    >
+                                        Direccion (opcional)
+                                    </label>
+                                    <Input
+                                        id={`address-${user.id}`}
+                                        value={form.data.address}
+                                        onChange={(event) =>
+                                            form.setData('address', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={form.errors.address} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label htmlFor={`city-${user.id}`} className="text-sm font-medium">
+                                        Ciudad
+                                    </label>
+                                    <Input
+                                        id={`city-${user.id}`}
+                                        value={form.data.city}
+                                        onChange={(event) =>
+                                            form.setData('city', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={form.errors.city} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label
+                                        htmlFor={`department-${user.id}`}
+                                        className="text-sm font-medium"
+                                    >
+                                        Departamento
+                                    </label>
+                                    <Input
+                                        id={`department-${user.id}`}
+                                        value={form.data.department}
+                                        onChange={(event) =>
+                                            form.setData('department', event.target.value)
+                                        }
+                                    />
+                                    <InputError message={form.errors.department} />
+                                </div>
+                            </div>
+                        )}
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
@@ -273,7 +483,7 @@ function EditableUserCard({
                                     htmlFor={`password-${user.id}`}
                                     className="text-sm font-medium"
                                 >
-                                    Nueva contraseña (opcional)
+                                    Nueva contrasena (opcional)
                                 </label>
                                 <PasswordInput
                                     id={`password-${user.id}`}
@@ -306,7 +516,9 @@ function EditableUserCard({
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                            Si no quieres cambiar la contraseña, deja ambos campos vacíos.
+                            {isCustomer
+                                ? 'Si el cliente no iniciara sesion, puedes dejar la contraseña vacia.'
+                                : 'Si no quieres cambiar la contraseña, deja ambos campos vacios.'}
                         </p>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -333,17 +545,33 @@ export default function UsersIndex({ users, roles, status }: Props) {
     const [search, setSearch] = useState('');
     const createForm = useForm<{
         name: string;
+        email: string;
         username: string;
         role: UserRole;
+        nit: string;
+        business_name: string;
+        supermarket_name: string;
+        address: string;
+        city: string;
+        department: string;
         password: string;
         password_confirmation: string;
     }>({
         name: '',
+        email: '',
         username: '',
         role: roles[0] ?? 'provider',
+        nit: '',
+        business_name: '',
+        supermarket_name: '',
+        address: '',
+        city: '',
+        department: '',
         password: '',
         password_confirmation: '',
     });
+
+    const isCreatingCustomer = isCustomerRole(createForm.data.role);
 
     const submitCreate = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -355,6 +583,17 @@ export default function UsersIndex({ users, roles, status }: Props) {
                 createForm.setData('role', roles[0] ?? 'provider');
             },
         });
+    };
+
+    const handleCreateRoleChange = (nextRole: UserRole) => {
+        createForm.setData('role', nextRole);
+
+        if (isCustomerRole(nextRole)) {
+            createForm.setData('name', '');
+            createForm.setData('password', '');
+            createForm.setData('password_confirmation', '');
+            createForm.clearErrors('name', 'password', 'password_confirmation');
+        }
     };
 
     const filteredUsers = useMemo(() => {
@@ -436,23 +675,42 @@ export default function UsersIndex({ users, roles, status }: Props) {
                     <CardContent>
                         <form onSubmit={submitCreate} className="space-y-4">
                             <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <label htmlFor="create-user-name" className="text-sm font-medium">
-                                        Nombre
+                                {!isCreatingCustomer && (
+                                    <div className="space-y-2">
+                                        <label htmlFor="create-user-name" className="text-sm font-medium">
+                                            Nombre
+                                        </label>
+                                        <Input
+                                            id="create-user-name"
+                                            value={createForm.data.name}
+                                            onChange={(event) =>
+                                                createForm.setData('name', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.name} />
+                                    </div>
+                                )}
+
+                                <div className={`space-y-2 ${isCreatingCustomer ? 'md:col-span-2' : ''}`}>
+                                    <label htmlFor="create-user-email" className="text-sm font-medium">
+                                        Correo (opcional)
                                     </label>
                                     <Input
-                                        id="create-user-name"
-                                        value={createForm.data.name}
+                                        id="create-user-email"
+                                        type="email"
+                                        value={createForm.data.email}
                                         onChange={(event) =>
-                                            createForm.setData('name', event.target.value)
+                                            createForm.setData('email', event.target.value)
                                         }
                                     />
-                                    <InputError message={createForm.errors.name} />
+                                    <InputError message={createForm.errors.email} />
                                 </div>
+                            </div>
 
+                            <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <label htmlFor="create-user-username" className="text-sm font-medium">
-                                        Usuario
+                                        Usuario {isCreatingCustomer ? '(opcional)' : ''}
                                     </label>
                                     <Input
                                         id="create-user-username"
@@ -463,61 +721,169 @@ export default function UsersIndex({ users, roles, status }: Props) {
                                         }
                                     />
                                     <InputError message={createForm.errors.username} />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label htmlFor="create-user-role" className="text-sm font-medium">
-                                    Rol
-                                </label>
-                                <select
-                                    id="create-user-role"
-                                    value={createForm.data.role}
-                                    onChange={(event) =>
-                                        createForm.setData('role', event.target.value as UserRole)
-                                    }
-                                    className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                                >
-                                    {roles.map((role) => (
-                                        <option key={role} value={role}>
-                                            {role}
-                                        </option>
-                                    ))}
-                                </select>
-                                <InputError message={createForm.errors.role} />
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <label htmlFor="create-user-password" className="text-sm font-medium">
-                                        Contraseña
-                                    </label>
-                                    <PasswordInput
-                                        id="create-user-password"
-                                        value={createForm.data.password}
-                                        autoComplete="new-password"
-                                        onChange={(event) =>
-                                            createForm.setData('password', event.target.value)
-                                        }
-                                    />
-                                    <InputError message={createForm.errors.password} />
+                                    <p className="text-xs text-muted-foreground">
+                                        {isCreatingCustomer
+                                            ? 'Si lo dejas vacio, se genera automaticamente.'
+                                            : 'Este usuario se usa para iniciar sesion.'}
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="create-user-password-confirmation" className="text-sm font-medium">
-                                        Confirmar contraseña
+                                    <label htmlFor="create-user-role" className="text-sm font-medium">
+                                        Rol
                                     </label>
-                                    <PasswordInput
-                                        id="create-user-password-confirmation"
-                                        value={createForm.data.password_confirmation}
-                                        autoComplete="new-password"
+                                    <select
+                                        id="create-user-role"
+                                        value={createForm.data.role}
                                         onChange={(event) =>
-                                            createForm.setData('password_confirmation', event.target.value)
+                                            handleCreateRoleChange(event.target.value as UserRole)
                                         }
-                                    />
-                                    <InputError message={createForm.errors.password_confirmation} />
+                                        className="border-input file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                    >
+                                        {roles.map((role) => (
+                                            <option key={role} value={role}>
+                                                {role}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <InputError message={createForm.errors.role} />
                                 </div>
                             </div>
+
+                            {isCreatingCustomer && (
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <label htmlFor="create-user-nit" className="text-sm font-medium">
+                                            NIT
+                                        </label>
+                                        <Input
+                                            id="create-user-nit"
+                                            value={createForm.data.nit}
+                                            onChange={(event) =>
+                                                createForm.setData('nit', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.nit} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor="create-user-business-name"
+                                            className="text-sm font-medium"
+                                        >
+                                            Razon social
+                                        </label>
+                                        <Input
+                                            id="create-user-business-name"
+                                            value={createForm.data.business_name}
+                                            onChange={(event) =>
+                                                createForm.setData('business_name', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.business_name} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor="create-user-supermarket-name"
+                                            className="text-sm font-medium"
+                                        >
+                                            Nombre supermercado
+                                        </label>
+                                        <Input
+                                            id="create-user-supermarket-name"
+                                            value={createForm.data.supermarket_name}
+                                            onChange={(event) =>
+                                                createForm.setData('supermarket_name', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.supermarket_name} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor="create-user-address"
+                                            className="text-sm font-medium"
+                                        >
+                                            Direccion (opcional)
+                                        </label>
+                                        <Input
+                                            id="create-user-address"
+                                            value={createForm.data.address}
+                                            onChange={(event) =>
+                                                createForm.setData('address', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.address} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label htmlFor="create-user-city" className="text-sm font-medium">
+                                            Ciudad
+                                        </label>
+                                        <Input
+                                            id="create-user-city"
+                                            value={createForm.data.city}
+                                            onChange={(event) =>
+                                                createForm.setData('city', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.city} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor="create-user-department"
+                                            className="text-sm font-medium"
+                                        >
+                                            Departamento
+                                        </label>
+                                        <Input
+                                            id="create-user-department"
+                                            value={createForm.data.department}
+                                            onChange={(event) =>
+                                                createForm.setData('department', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.department} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isCreatingCustomer && (
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <label htmlFor="create-user-password" className="text-sm font-medium">
+                                            Contrasena
+                                        </label>
+                                        <PasswordInput
+                                            id="create-user-password"
+                                            value={createForm.data.password}
+                                            autoComplete="new-password"
+                                            onChange={(event) =>
+                                                createForm.setData('password', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.password} />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label htmlFor="create-user-password-confirmation" className="text-sm font-medium">
+                                            Confirmar contrasena
+                                        </label>
+                                        <PasswordInput
+                                            id="create-user-password-confirmation"
+                                            value={createForm.data.password_confirmation}
+                                            autoComplete="new-password"
+                                            onChange={(event) =>
+                                                createForm.setData('password_confirmation', event.target.value)
+                                            }
+                                        />
+                                        <InputError message={createForm.errors.password_confirmation} />
+                                    </div>
+                                </div>
+                            )}
+
+                            <p className="text-xs text-muted-foreground">
+                                {isCreatingCustomer
+                                    ? 'Los clientes son informativos y no necesitan credenciales para operar.'
+                                    : 'Completa credenciales para usuarios operativos del sistema.'}
+                            </p>
 
                             <Button type="submit" disabled={createForm.processing}>
                                 Registrar usuario

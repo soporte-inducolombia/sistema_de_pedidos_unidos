@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests\Orders;
 
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class StoreOrderRequest extends FormRequest
 {
@@ -16,6 +18,15 @@ class StoreOrderRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'customer_user_id' => [
+                'nullable',
+                'integer',
+                Rule::exists((new User)->getTable(), 'id')->where(
+                    fn ($query) => $query
+                        ->whereIn('role', ['cliente', 'client'])
+                        ->whereNull('deleted_at'),
+                ),
+            ],
             'customer_email' => ['required', 'email:rfc'],
             'customer_signature' => [
                 'required',
@@ -37,7 +48,8 @@ class StoreOrderRequest extends FormRequest
             ],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'distinct', 'exists:products,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:9999'],
+            'items.*.discount_percent' => ['sometimes', 'numeric', 'between:0,100'],
         ];
     }
 }

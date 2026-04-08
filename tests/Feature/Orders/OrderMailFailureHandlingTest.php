@@ -44,7 +44,7 @@ class OrderMailFailureHandlingTest extends TestCase
             'customer_email' => 'cliente@example.com',
             'customer_signature' => $this->customerSignature(),
             'items' => [
-                ['product_id' => $product->id, 'quantity' => 1],
+                ['product_id' => $product->id, 'quantity' => 1, 'discount_percent' => 10],
             ],
         ]);
 

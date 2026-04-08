@@ -54,6 +54,7 @@ class ProductManagementTest extends TestCase
             'name' => 'Cuaderno pruebas',
             'description' => 'Descripcion inicial',
             'original_price' => '125.90',
+            'packaging_multiple' => 5,
             'is_active' => true,
         ]);
 
@@ -67,6 +68,7 @@ class ProductManagementTest extends TestCase
             'name' => 'Cuaderno pruebas v2',
             'description' => 'Descripcion actualizada',
             'original_price' => '149.00',
+            'packaging_multiple' => 10,
             'is_active' => false,
         ]);
 
@@ -77,6 +79,7 @@ class ProductManagementTest extends TestCase
             'code' => 'COD-PRUEBA-02',
             'barcode' => '7700000000012',
             'name' => 'Cuaderno pruebas v2',
+            'packaging_multiple' => 10,
             'is_active' => false,
         ]);
     }

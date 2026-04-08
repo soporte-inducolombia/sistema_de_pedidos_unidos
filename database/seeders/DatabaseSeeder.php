@@ -26,6 +26,11 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Proveedor'],
         );
 
+        Role::query()->firstOrCreate(
+            ['slug' => 'cliente'],
+            ['name' => 'Cliente'],
+        );
+
         User::factory()->create([
             'name' => 'Test User',
             'username' => 'soporte_inducolombia',

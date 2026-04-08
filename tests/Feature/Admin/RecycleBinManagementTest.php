@@ -7,6 +7,7 @@ use App\Models\Provider;
 use App\Models\ProviderProduct;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class RecycleBinManagementTest extends TestCase
@@ -24,8 +25,11 @@ class RecycleBinManagementTest extends TestCase
 
         $response = $this->actingAs($admin)->get(route('admin.recycle-bin.index'));
 
-        $response->assertOk();
-        $response->assertSee('Papelera de reciclaje');
+        $response
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/recycle-bin/index')
+                ->has('items'));
     }
 
     public function test_non_admin_cannot_access_recycle_bin_page(): void

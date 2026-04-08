@@ -25,6 +25,7 @@ class ProductManagementController extends Controller
                 'name' => $product->name,
                 'description' => $product->description,
                 'original_price' => (string) $product->original_price,
+                'packaging_multiple' => $product->packaging_multiple,
                 'is_active' => $product->is_active,
                 'provider_products_count' => $product->provider_products_count,
             ])

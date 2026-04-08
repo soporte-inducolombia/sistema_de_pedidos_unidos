@@ -66,7 +66,11 @@ class ProviderOrderManagementController extends Controller
 
         $payload = $request->validated();
         $itemsByProduct = collect($payload['items'])
-            ->mapWithKeys(fn (array $item): array => [(int) $item['product_id'] => (int) $item['quantity']]);
+            ->mapWithKeys(fn (array $item): array => [
+                (int) $item['product_id'] => [
+                    'quantity' => (int) $item['quantity'],
+                ],
+            ]);
 
         $providerProducts = ProviderProduct::query()
             ->with('product')
@@ -125,15 +129,33 @@ class ProviderOrderManagementController extends Controller
                 $subtotalOriginalInCents = 0;
                 $subtotalSpecialInCents = 0;
 
-                foreach ($itemsByProduct as $productId => $quantity) {
+                foreach ($itemsByProduct as $productId => $itemData) {
                     $providerProduct = $providerProducts->get($productId);
 
                     if ($providerProduct === null || $providerProduct->product === null) {
                         continue;
                     }
 
+                    $quantity = (int) ($itemData['quantity'] ?? 0);
+                    $discountPercent = round((float) $providerProduct->discount_value, 2);
+                    $packagingMultiple = max(1, (int) $providerProduct->product->packaging_multiple);
+
+                    if ($quantity < $packagingMultiple || $quantity % $packagingMultiple !== 0) {
+                        throw ValidationException::withMessages([
+                            'items' => sprintf(
+                                'La cantidad de %s debe ser minimo %d y multiplo de %d.',
+                                $providerProduct->product->name,
+                                $packagingMultiple,
+                                $packagingMultiple,
+                            ),
+                        ]);
+                    }
+
                     $originalUnitInCents = (int) round(((float) $providerProduct->product->original_price) * 100);
-                    $specialUnitInCents = (int) round(((float) $providerProduct->special_price) * 100);
+                    $specialUnitInCents = max(
+                        0,
+                        (int) round($originalUnitInCents * ((100 - $discountPercent) / 100)),
+                    );
 
                     $lineOriginalInCents = $originalUnitInCents * $quantity;
                     $lineSpecialInCents = $specialUnitInCents * $quantity;
@@ -317,10 +339,9 @@ class ProviderOrderManagementController extends Controller
                 'id' => $providerProduct->id,
                 'product_id' => $providerProduct->product_id,
                 'product_name' => $providerProduct->product?->name,
-                'code' => $providerProduct->product?->code,
-                'barcode' => $providerProduct->product?->barcode,
-                'special_price' => (string) $providerProduct->special_price,
-                'discount_percent' => (string) $providerProduct->discount_value,
+                'original_price' => (string) $providerProduct->product?->original_price,
+                'default_discount_percent' => (string) $providerProduct->discount_value,
+                'packaging_multiple' => max(1, (int) $providerProduct->product?->packaging_multiple),
             ])
             ->all();
     }
@@ -337,6 +358,7 @@ class ProviderOrderManagementController extends Controller
             'order_number' => $order->order_number ?? $order->id,
             'status' => $order->status->value,
             'customer_email' => $order->customer_email,
+            'subtotal_original' => (string) $order->subtotal_original,
             'subtotal_special' => (string) $order->subtotal_special,
             'total_discount' => (string) $order->total_discount,
             'created_at' => $order->created_at?->toISOString(),
@@ -356,14 +378,29 @@ class ProviderOrderManagementController extends Controller
                     'id' => $item->id,
                     'product_id' => $item->product_id,
                     'product_name' => $item->snapshot_product_name,
-                    'code' => $item->snapshot_sku,
                     'quantity' => $item->quantity,
+                    'unit_original_price' => (string) $item->unit_original_price,
                     'unit_special_price' => (string) $item->unit_special_price,
+                    'discount_percent' => $this->resolveDiscountPercent($item->unit_original_price, $item->unit_special_price),
                     'line_special_total' => (string) $item->line_special_total,
                 ])
                 ->values()
                 ->all(),
         ];
+    }
+
+    private function resolveDiscountPercent(float|string $unitOriginalPrice, float|string $unitSpecialPrice): string
+    {
+        $original = (float) $unitOriginalPrice;
+        $special = (float) $unitSpecialPrice;
+
+        if ($original <= 0) {
+            return '0.00';
+        }
+
+        $discount = (($original - $special) / $original) * 100;
+
+        return number_format(max(0, min(100, $discount)), 2, '.', '');
     }
 
     private function storeCustomerSignature(string $signatureData, int $providerId, string $publicId): string
