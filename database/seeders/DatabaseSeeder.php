@@ -2,39 +2,34 @@
 
 namespace Database\Seeders;
 
+use App\Enums\UserRole;
 use App\Models\Role;
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
-
         Role::query()->firstOrCreate(
-            ['slug' => 'admin'],
+            ['slug' => UserRole::ADMIN->value],
             ['name' => 'Administrador'],
         );
 
         Role::query()->firstOrCreate(
-            ['slug' => 'provider'],
+            ['slug' => UserRole::PROVIDER->value],
             ['name' => 'Proveedor'],
         );
 
         Role::query()->firstOrCreate(
-            ['slug' => 'cliente'],
+            ['slug' => UserRole::CUSTOMER->value],
             ['name' => 'Cliente'],
         );
 
         User::factory()->create([
-            'name' => 'Test User',
+            'name' => 'Soporte Unidos',
             'username' => 'soporte_inducolombia',
-            'role' => 'admin',
+            'role' => UserRole::ADMIN->value,
         ]);
     }
 }

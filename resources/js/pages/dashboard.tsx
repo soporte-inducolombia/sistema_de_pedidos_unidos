@@ -1,16 +1,12 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import {
     Building2,
     CalendarClock,
-    CheckCircle2,
-    Clock3,
     ClipboardList,
     PackageSearch,
 } from 'lucide-react';
-import type { FormEvent } from 'react';
 import { useMemo, useState } from 'react';
 import Heading from '@/components/heading';
-import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,18 +16,14 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { formatCopCurrency } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import { index as adminProductsIndex } from '@/routes/admin/products';
 import { index as adminProviderProductsIndex } from '@/routes/admin/provider-products';
+import { index as adminOrdersIndex } from '@/routes/admin/orders';
 import { index as adminRolesIndex } from '@/routes/admin/roles';
 import { index as adminUsersIndex } from '@/routes/admin/users';
-import {
-    index as providerOrdersIndex,
-    resendOtp,
-    verifyOtp,
-} from '@/routes/provider/orders';
+import { index as providerOrdersIndex } from '@/routes/provider/orders';
 
 type AdminSummary = {
     products_count: number;
@@ -44,7 +36,8 @@ type AdminSummary = {
         status: string;
         customer_email: string;
         provider_name: string | null;
-        provider_email: string | null;
+        provider_username: string | null;
+        subtotal_special: string;
         total_discount: string;
         created_at: string | null;
     }[];
@@ -59,21 +52,17 @@ type ProviderWorkspace = {
         products_count: number;
         pending_orders_count: number;
         confirmed_orders_count: number;
-        total_savings: number;
+        total_sales: number;
     };
     recent_orders: {
         public_id: string;
         order_number: number;
         status: string;
-        customer_email: string;
+        customer_email: string | null;
         subtotal_special: string;
         total_discount: string;
         created_at: string | null;
         confirmed_at: string | null;
-        otp_expires_at: string | null;
-        otp_attempts_remaining: number;
-        otp_resend_count: number | null;
-        can_resend_otp: boolean;
     }[];
 };
 
@@ -104,29 +93,6 @@ const getStatusLabel = (status: string): string => {
 };
 
 function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders'][number] }) {
-    const verifyForm = useForm<{ code: string }>({
-        code: '',
-    });
-
-    const resendForm = useForm<Record<string, never>>({});
-
-    const submitVerification = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-
-        verifyForm.post(verifyOtp.url({ order: order.public_id }), {
-            preserveScroll: true,
-            onSuccess: () => {
-                verifyForm.reset();
-            },
-        });
-    };
-
-    const triggerResend = () => {
-        resendForm.post(resendOtp.url({ order: order.public_id }), {
-            preserveScroll: true,
-        });
-    };
-
     const isConfirmed = order.status === 'confirmed';
 
     return (
@@ -142,7 +108,7 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
                     <div>
                         <CardTitle>Orden Nro {order.order_number}</CardTitle>
                         <CardDescription>
-                            Cliente: {order.customer_email}
+                            {order.customer_email ? `Cliente: ${order.customer_email}` : 'Sin correo registrado'}
                         </CardDescription>
                     </div>
                     <Badge variant={isConfirmed ? 'default' : 'outline'}>
@@ -167,50 +133,9 @@ function PendingOrderCard({ order }: { order: ProviderWorkspace['recent_orders']
                 </div>
 
                 {order.status === 'pending' && (
-                    <>
-                        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                            Expira: {formatDateTime(order.otp_expires_at)}
-                        </div>
-
-                        <form onSubmit={submitVerification} className="space-y-2">
-                            <label className="text-sm font-medium" htmlFor={`otp-${order.public_id}`}>
-                                Codigo OTP
-                            </label>
-                            <Input
-                                id={`otp-${order.public_id}`}
-                                value={verifyForm.data.code}
-                                onChange={(event) =>
-                                    verifyForm.setData('code', event.target.value)
-                                }
-                                placeholder="Ingresa el codigo de 6 digitos"
-                                maxLength={6}
-                            />
-                            <InputError message={verifyForm.errors.code} />
-
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Button type="submit" disabled={verifyForm.processing}>
-                                    <CheckCircle2 />
-                                    Confirmar pedido
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={triggerResend}
-                                    disabled={
-                                        resendForm.processing ||
-                                        !order.can_resend_otp
-                                    }
-                                >
-                                    <Clock3 />
-                                    Reenviar OTP
-                                </Button>
-                            </div>
-                        </form>
-
-                        <div className="text-xs text-muted-foreground">
-                            Intentos restantes: {order.otp_attempts_remaining} | Reenvios usados: {order.otp_resend_count ?? 0}
-                        </div>
-                    </>
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                        Pendiente de confirmacion
+                    </div>
                 )}
 
                 {isConfirmed && (
@@ -245,7 +170,7 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
         products_count: 0,
         pending_orders_count: 0,
         confirmed_orders_count: 0,
-        total_savings: 0,
+        total_sales: 0,
     };
 
     return (
@@ -302,6 +227,9 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                             </CardHeader>
                             <CardContent className="flex flex-wrap gap-2">
                                 <Button asChild variant="outline">
+                                    <Link href={adminOrdersIndex()}>Pedidos</Link>
+                                </Button>
+                                <Button asChild variant="outline">
                                     <Link href={adminProductsIndex()}>Productos</Link>
                                 </Button>
                                 <Button asChild variant="outline">
@@ -314,6 +242,9 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                                 </Button>
                                 <Button asChild variant="outline">
                                     <Link href={adminRolesIndex()}>Roles</Link>
+                                </Button>
+                                <Button asChild variant="outline">
+                                    <Link href="/admin/recycle-bin">Papelera</Link>
                                 </Button>
                             </CardContent>
                         </Card>
@@ -333,10 +264,10 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                                                 Orden Nro {order.order_number ?? '-'} • {order.status}
                                             </div>
                                             <div className="text-muted-foreground">
-                                                {order.customer_email} - {order.provider_name} ({order.provider_email})
+                                                {order.customer_email} - {order.provider_name}{order.provider_username ? ` (${order.provider_username})` : ''}
                                             </div>
                                             <div className="text-muted-foreground">
-                                                Ahorro: {formatCopCurrency(order.total_discount)}
+                                                Total facturado: {formatCopCurrency(order.subtotal_special)}
                                             </div>
                                         </div>
                                     ))}
@@ -388,8 +319,8 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                             </Card>
                             <Card className="border-sky-500/20">
                                 <CardHeader>
-                                    <CardDescription>Ahorro acumulado</CardDescription>
-                                    <CardTitle>{formatCopCurrency(providerStats.total_savings)}</CardTitle>
+                                    <CardDescription>Total facturado</CardDescription>
+                                    <CardTitle>{formatCopCurrency(providerStats.total_sales)}</CardTitle>
                                 </CardHeader>
                             </Card>
                         </div>
@@ -423,7 +354,7 @@ export default function Dashboard({ status, adminSummary, providerWorkspace }: P
                                     Historial reciente
                                 </CardTitle>
                                 <CardDescription>
-                                    Filtra pedidos por estado y gestiona OTP pendientes.
+                                    Filtra pedidos por estado y gestionaos desde aqui.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="flex flex-wrap gap-2">

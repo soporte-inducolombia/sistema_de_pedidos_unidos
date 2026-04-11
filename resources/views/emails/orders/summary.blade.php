@@ -15,19 +15,31 @@
     <tr>
         <th>Producto</th>
         <th>Cantidad</th>
-        <th>Precio Original</th>
-        <th>Precio Especial</th>
-        <th>Subtotal Especial</th>
+        <th>Embalaje</th>
+        <th>Precio base</th>
+        <th>Precio rueda</th>
+        <th>Descuento</th>
+        <th>Total</th>
     </tr>
     </thead>
     <tbody>
     @foreach($order->items as $item)
+        @php
+            $unitOriginal = (float) $item->unit_original_price;
+            $unitSpecial  = (float) $item->unit_special_price;
+            $discountPct  = $unitOriginal > 0
+                ? round((1 - $unitSpecial / $unitOriginal) * 100, 2)
+                : 0;
+            $packaging    = $item->product?->packaging_multiple ?? 1;
+        @endphp
         <tr>
             <td>{{ $item->snapshot_product_name }}</td>
             <td>{{ $item->quantity }}</td>
-            <td>{{ number_format((float) $item->unit_original_price, 2) }}</td>
-            <td>{{ number_format((float) $item->unit_special_price, 2) }}</td>
-            <td>{{ number_format((float) $item->line_special_total, 2) }}</td>
+            <td>x{{ $packaging }}</td>
+            <td>${{ number_format($unitOriginal, 2) }}</td>
+            <td>${{ number_format($unitSpecial, 2) }}</td>
+            <td>{{ $discountPct }}%</td>
+            <td>${{ number_format((float) $item->line_special_total, 2) }}</td>
         </tr>
     @endforeach
     </tbody>

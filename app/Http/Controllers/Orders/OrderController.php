@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\Orders;
 
 use App\Enums\OrderStatus;
+use App\Events\OrderConfirmed;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Orders\StoreOrderRequest;
-use App\Jobs\SendOrderOtpMailJob;
 use App\Models\Order;
 use App\Models\Provider;
 use App\Models\ProviderProduct;
 use App\Models\User;
-use App\Services\OrderOtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -92,7 +91,7 @@ class OrderController extends Controller
         ]);
     }
 
-    public function store(StoreOrderRequest $request, OrderOtpService $otpService): JsonResponse|RedirectResponse
+    public function store(StoreOrderRequest $request): JsonResponse|RedirectResponse
     {
         $provider = $this->resolveProvider($request);
 
@@ -119,7 +118,6 @@ class OrderController extends Controller
             ]);
         }
 
-        $otpCode = $otpService->generateCode();
         $publicId = (string) Str::uuid();
         $signaturePath = $this->storeCustomerSignature(
             $payload['customer_signature'],
@@ -128,7 +126,7 @@ class OrderController extends Controller
         );
 
         try {
-            $order = DB::transaction(function () use ($payload, $provider, $providerProducts, $itemsByProduct, $otpCode, $otpService, $publicId, $signaturePath): Order {
+            $order = DB::transaction(function () use ($payload, $provider, $providerProducts, $itemsByProduct, $publicId, $signaturePath): Order {
                 $nextOrderNumber = ((int) Order::query()
                     ->withTrashed()
                     ->where('provider_id', $provider->id)
@@ -140,12 +138,13 @@ class OrderController extends Controller
                     'order_number' => $nextOrderNumber,
                     'provider_id' => $provider->id,
                     'customer_user_id' => $payload['customer_user_id'] ?? null,
-                    'customer_email' => $payload['customer_email'],
+                    'customer_email' => $payload['customer_email'] ?? null,
                     'customer_signature_path' => $signaturePath,
-                    'status' => OrderStatus::PENDING,
+                    'status' => OrderStatus::CONFIRMED,
                     'subtotal_original' => 0,
                     'subtotal_special' => 0,
                     'total_discount' => 0,
+                    'confirmed_at' => now(),
                 ]);
 
                 $subtotalOriginalInCents = 0;
@@ -205,14 +204,7 @@ class OrderController extends Controller
                     'total_discount' => ($subtotalOriginalInCents - $subtotalSpecialInCents) / 100,
                 ]);
 
-                $order->otp()->create([
-                    'code_hash' => $otpService->hashCode($otpCode),
-                    'expires_at' => $otpService->expiration(),
-                    'max_attempts' => (int) config('orders.otp.max_attempts', 5),
-                    'last_sent_at' => now(),
-                ]);
-
-                return $order->fresh(['items', 'otp']);
+                return $order->fresh(['items']);
             });
         } catch (Throwable $exception) {
             Storage::disk('local')->delete($signaturePath);
@@ -220,16 +212,14 @@ class OrderController extends Controller
             throw $exception;
         }
 
-        $otpSent = true;
+        $postConfirmationQueued = true;
 
         try {
-            SendOrderOtpMailJob::dispatch($order->id, $otpCode)
-                ->onQueue((string) config('orders.queues.otp', 'mails'))
-                ->afterCommit();
+            event(new OrderConfirmed($order->id));
         } catch (Throwable $exception) {
-            $otpSent = false;
+            $postConfirmationQueued = false;
 
-            Log::error('No fue posible despachar el correo OTP para la orden.', [
+            Log::error('La orden se creo confirmada, pero fallo el despacho de correos/postprocesos.', [
                 'order_id' => $order->id,
                 'customer_email' => $order->customer_email,
                 'queue_connection' => (string) config('queue.default'),
@@ -238,13 +228,12 @@ class OrderController extends Controller
         }
 
         if ($request->expectsJson()) {
-            $message = $otpSent
-                ? 'Orden generada en estado pendiente. OTP enviado al cliente.'
-                : 'Orden generada en estado pendiente, pero no fue posible enviar OTP en este momento. Intenta reenviarlo.';
+            $message = $postConfirmationQueued
+                ? 'Pedido confirmado correctamente.'
+                : 'Pedido confirmado, pero no fue posible despachar correos de confirmacion en este momento.';
 
             return response()->json([
                 'message' => $message,
-                'otp_delivery' => $otpSent ? 'sent' : 'failed',
                 'order' => [
                     'public_id' => $order->public_id,
                     'order_number' => $order->order_number,
@@ -253,19 +242,11 @@ class OrderController extends Controller
                     'subtotal_original' => $order->subtotal_original,
                     'subtotal_special' => $order->subtotal_special,
                     'total_discount' => $order->total_discount,
-                    'otp_expires_at' => $order->otp?->expires_at,
                 ],
-            ], $otpSent ? 201 : 202);
+            ], 201);
         }
 
-        $statusMessage = $otpSent
-            ? 'Orden generada correctamente. OTP enviado al cliente.'
-            : 'Orden generada correctamente, pero no fue posible enviar OTP. Intenta reenviarlo desde Pedidos.';
-
-        return to_route('provider.orders.index')->with([
-            'status' => $statusMessage,
-            'pending_otp_order_public_id' => $order->public_id,
-        ]);
+        return to_route('provider.orders.index')->with('status', 'Pedido confirmado correctamente.');
     }
 
     private function resolveProvider(Request $request): Provider

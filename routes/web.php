@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\OrderExportController;
+use App\Http\Controllers\Admin\OrderManagementController;
 use App\Http\Controllers\Admin\ProductManagementController;
 use App\Http\Controllers\Admin\ProviderProductManagementController;
 use App\Http\Controllers\Admin\RecycleBinManagementController;
@@ -7,7 +9,6 @@ use App\Http\Controllers\Admin\RoleManagementController;
 use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Orders\OrderController;
-use App\Http\Controllers\Orders\OrderOtpVerificationController;
 use App\Http\Controllers\Orders\ProviderOrderManagementController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,11 +24,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('orders/{order}', [ProviderOrderManagementController::class, 'update'])->name('orders.update');
         Route::delete('orders/{order}', [ProviderOrderManagementController::class, 'destroy'])->name('orders.destroy');
         Route::get('orders/{order}/signature', [ProviderOrderManagementController::class, 'signature'])->name('orders.signature');
-        Route::post('orders/{order}/verify-otp', [OrderOtpVerificationController::class, 'store'])->name('orders.verify-otp');
-        Route::post('orders/{order}/resend-otp', [OrderOtpVerificationController::class, 'resend'])->name('orders.resend-otp');
     });
 
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('orders/export', OrderExportController::class)->name('orders.export');
+        Route::get('orders', [OrderManagementController::class, 'index'])->name('orders.index');
+        Route::patch('orders/{order}', [OrderManagementController::class, 'update'])->name('orders.update');
+        Route::delete('orders/{order}', [OrderManagementController::class, 'destroy'])->name('orders.destroy');
+        Route::get('orders/{order}/signature', [OrderManagementController::class, 'signature'])->name('orders.signature');
+
         Route::get('products', [ProductManagementController::class, 'index'])->name('products.index');
         Route::post('products', [ProductManagementController::class, 'store'])->name('products.store');
         Route::patch('products/{product}', [ProductManagementController::class, 'update'])->name('products.update');

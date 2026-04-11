@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Orders;
+namespace App\Http\Controllers\Admin;
 
 use App\Enums\OrderStatus;
 use App\Events\OrderConfirmed;
@@ -9,7 +9,6 @@ use App\Http\Requests\Orders\UpdateOrderRequest;
 use App\Models\Order;
 use App\Models\Provider;
 use App\Models\ProviderProduct;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,39 +21,51 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
-class ProviderOrderManagementController extends Controller
+class OrderManagementController extends Controller
 {
     public function index(Request $request): Response
     {
-        $provider = $this->resolveProvider($request);
-        $providerProducts = $this->loadProviderProducts($provider->id);
-
         $orders = Order::query()
-            ->with(['items'])
-            ->where('provider_id', $provider->id)
+            ->with(['provider', 'items'])
             ->latest()
             ->get()
             ->map(fn (Order $order): array => $this->mapOrderRow($order))
             ->values()
             ->all();
 
-        return Inertia::render('provider/orders/index', [
+        $providers = Provider::query()
+            ->with(['providerProducts.product'])
+            ->get()
+            ->map(fn (Provider $provider): array => [
+                'id' => $provider->id,
+                'company_name' => $provider->company_name,
+                'products' => $provider->providerProducts
+                    ->where('is_active', true)
+                    ->filter(fn (ProviderProduct $pp): bool => $pp->product?->is_active === true)
+                    ->sortBy(fn (ProviderProduct $pp): string => (string) $pp->product?->name)
+                    ->values()
+                    ->map(fn (ProviderProduct $pp): array => [
+                        'id' => $pp->id,
+                        'product_id' => $pp->product_id,
+                        'product_name' => $pp->product?->name,
+                        'original_price' => (string) $pp->product?->original_price,
+                        'default_discount_percent' => (string) $pp->discount_value,
+                        'packaging_multiple' => max(1, (int) $pp->product?->packaging_multiple),
+                    ])
+                    ->all(),
+            ])
+            ->all();
+
+        return Inertia::render('admin/orders/index', [
             'status' => $request->session()->get('status'),
-            'providerWorkspace' => [
-                'provider' => [
-                    'company_name' => $provider->company_name,
-                    'stand_label' => $provider->stand_label,
-                ],
-                'products' => $providerProducts,
-                'orders' => $orders,
-            ],
+            'orders' => $orders,
+            'providers' => $providers,
         ]);
     }
 
-    public function update(UpdateOrderRequest $request, Order $order): JsonResponse|RedirectResponse
+    public function update(UpdateOrderRequest $request, Order $order): RedirectResponse
     {
-        $provider = $this->resolveProvider($request);
-        $this->ensureProviderOrder($order, $provider);
+        $provider = Provider::query()->findOrFail($order->provider_id);
 
         if (! in_array($order->status, [OrderStatus::PENDING, OrderStatus::CONFIRMED], true)) {
             throw ValidationException::withMessages([
@@ -65,9 +76,7 @@ class ProviderOrderManagementController extends Controller
         $payload = $request->validated();
         $itemsByProduct = collect($payload['items'])
             ->mapWithKeys(fn (array $item): array => [
-                (int) $item['product_id'] => [
-                    'quantity' => (int) $item['quantity'],
-                ],
+                (int) $item['product_id'] => ['quantity' => (int) $item['quantity']],
             ]);
 
         $providerProducts = ProviderProduct::query()
@@ -75,7 +84,7 @@ class ProviderOrderManagementController extends Controller
             ->where('provider_id', $provider->id)
             ->where('is_active', true)
             ->whereIn('product_id', $itemsByProduct->keys()->all())
-            ->whereHas('product', fn ($query) => $query->where('is_active', true))
+            ->whereHas('product', fn ($q) => $q->where('is_active', true))
             ->get()
             ->keyBy('product_id');
 
@@ -88,36 +97,24 @@ class ProviderOrderManagementController extends Controller
         $newSignaturePath = null;
 
         if (isset($payload['customer_signature']) && is_string($payload['customer_signature'])) {
-            $newSignaturePath = $this->storeCustomerSignature(
-                $payload['customer_signature'],
-                $provider->id,
-                $order->public_id,
-            );
+            $newSignaturePath = $this->storeCustomerSignature($payload['customer_signature'], $provider->id, $order->public_id);
         }
 
         $oldSignaturePath = $order->customer_signature_path;
 
         try {
-            $updatedOrder = DB::transaction(function () use ($order, $provider, $payload, $itemsByProduct, $providerProducts, $newSignaturePath): Order {
+            $updatedOrder = DB::transaction(function () use ($order, $payload, $itemsByProduct, $providerProducts, $newSignaturePath): Order {
                 $lockedOrder = Order::query()
                     ->whereKey($order->id)
                     ->with(['items'])
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                $this->ensureProviderOrder($lockedOrder, $provider);
-
-                if (! in_array($lockedOrder->status, [OrderStatus::PENDING, OrderStatus::CONFIRMED], true)) {
-                    throw ValidationException::withMessages([
-                        'order' => 'Solo puedes editar pedidos pendientes o confirmados.',
-                    ]);
-                }
-
                 $signaturePath = $newSignaturePath ?? $lockedOrder->customer_signature_path;
 
                 if ($signaturePath === null) {
                     throw ValidationException::withMessages([
-                        'customer_signature' => 'La firma del cliente es obligatoria para actualizar el pedido.',
+                        'customer_signature' => 'La firma del cliente es obligatoria.',
                     ]);
                 }
 
@@ -149,11 +146,7 @@ class ProviderOrderManagementController extends Controller
                     }
 
                     $originalUnitInCents = (int) round(((float) $providerProduct->product->original_price) * 100);
-                    $specialUnitInCents = max(
-                        0,
-                        (int) round($originalUnitInCents * ((100 - $discountPercent) / 100)),
-                    );
-
+                    $specialUnitInCents = max(0, (int) round($originalUnitInCents * ((100 - $discountPercent) / 100)));
                     $lineOriginalInCents = $originalUnitInCents * $quantity;
                     $lineSpecialInCents = $specialUnitInCents * $quantity;
 
@@ -201,56 +194,24 @@ class ProviderOrderManagementController extends Controller
         try {
             event(new OrderConfirmed($updatedOrder->id));
         } catch (Throwable $exception) {
-            Log::error('No fue posible despachar correos despues de editar la orden.', [
+            Log::error('No fue posible despachar correos despues de editar la orden (admin).', [
                 'order_id' => $updatedOrder->id,
-                'customer_email' => $updatedOrder->customer_email,
-                'queue_connection' => (string) config('queue.default'),
                 'exception' => $exception->getMessage(),
             ]);
         }
 
-        if ($request->expectsJson()) {
-            return response()->json([
-                'message' => 'Pedido actualizado correctamente.',
-                'order' => [
-                    'public_id' => $updatedOrder->public_id,
-                    'order_number' => $updatedOrder->order_number,
-                    'status' => $updatedOrder->status,
-                    'customer_email' => $updatedOrder->customer_email,
-                ],
-            ]);
-        }
-
-        return to_route('provider.orders.index')->with('status', 'Pedido actualizado correctamente.');
+        return to_route('admin.orders.index')->with('status', 'Pedido actualizado correctamente.');
     }
 
-    public function destroy(Request $request, Order $order): JsonResponse|RedirectResponse
+    public function destroy(Order $order): RedirectResponse
     {
-        $provider = $this->resolveProvider($request);
-        $this->ensureProviderOrder($order, $provider);
-
-        if (! in_array($order->status, [OrderStatus::PENDING, OrderStatus::CONFIRMED], true)) {
-            throw ValidationException::withMessages([
-                'order' => 'No puedes eliminar este pedido.',
-            ]);
-        }
-
         $order->delete();
 
-        if ($request->expectsJson()) {
-            return response()->json([
-                'message' => 'Pedido eliminado correctamente.',
-            ]);
-        }
-
-        return to_route('provider.orders.index')->with('status', 'Pedido eliminado correctamente.');
+        return to_route('admin.orders.index')->with('status', 'Pedido eliminado correctamente.');
     }
 
-    public function signature(Request $request, Order $order): StreamedResponse
+    public function signature(Order $order): StreamedResponse
     {
-        $provider = $this->resolveProvider($request);
-        $this->ensureProviderOrder($order, $provider);
-
         $signaturePath = $order->customer_signature_path;
 
         if ($signaturePath === null || ! Storage::disk('local')->exists($signaturePath)) {
@@ -260,54 +221,8 @@ class ProviderOrderManagementController extends Controller
         return Storage::disk('local')->response(
             $signaturePath,
             sprintf('orden-%s-firma.png', $order->public_id),
-            [
-                'Content-Type' => 'image/png',
-                'Cache-Control' => 'private, max-age=300',
-            ],
+            ['Content-Type' => 'image/png', 'Cache-Control' => 'private, max-age=300'],
         );
-    }
-
-    private function resolveProvider(Request $request): Provider
-    {
-        $provider = $request->user()?->provider;
-
-        if (! $provider instanceof Provider) {
-            abort(403, 'El usuario autenticado no tiene un proveedor asociado.');
-        }
-
-        return $provider;
-    }
-
-    private function ensureProviderOrder(Order $order, Provider $provider): void
-    {
-        if ($order->provider_id !== $provider->id) {
-            abort(403, 'La orden no pertenece al proveedor autenticado.');
-        }
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function loadProviderProducts(int $providerId): array
-    {
-        return ProviderProduct::query()
-            ->with('product')
-            ->where('provider_id', $providerId)
-            ->where('is_active', true)
-            ->whereHas('product', fn ($query) => $query
-                ->where('is_active', true))
-            ->get()
-            ->sortBy(fn (ProviderProduct $providerProduct): string => (string) $providerProduct->product?->name)
-            ->values()
-            ->map(fn (ProviderProduct $providerProduct): array => [
-                'id' => $providerProduct->id,
-                'product_id' => $providerProduct->product_id,
-                'product_name' => $providerProduct->product?->name,
-                'original_price' => (string) $providerProduct->product?->original_price,
-                'default_discount_percent' => (string) $providerProduct->discount_value,
-                'packaging_multiple' => max(1, (int) $providerProduct->product?->packaging_multiple),
-            ])
-            ->all();
     }
 
     /**
@@ -318,6 +233,8 @@ class ProviderOrderManagementController extends Controller
         return [
             'public_id' => $order->public_id,
             'order_number' => $order->order_number ?? $order->id,
+            'provider_id' => $order->provider_id,
+            'provider_name' => $order->provider?->company_name,
             'status' => $order->status->value,
             'customer_email' => $order->customer_email,
             'subtotal_original' => (string) $order->subtotal_original,
@@ -325,9 +242,9 @@ class ProviderOrderManagementController extends Controller
             'total_discount' => (string) $order->total_discount,
             'created_at' => $order->created_at?->toISOString(),
             'confirmed_at' => $order->confirmed_at?->toISOString(),
-            'signature_url' => route('provider.orders.signature', $order),
-            'can_edit' => in_array($order->status->value, [OrderStatus::PENDING->value, OrderStatus::CONFIRMED->value], true),
-            'can_delete' => in_array($order->status->value, [OrderStatus::PENDING->value, OrderStatus::CONFIRMED->value], true),
+            'signature_url' => route('admin.orders.signature', $order),
+            'can_edit' => true,
+            'can_delete' => true,
             'items' => $order->items
                 ->map(fn ($item): array => [
                     'id' => $item->id,
@@ -353,9 +270,7 @@ class ProviderOrderManagementController extends Controller
             return '0.00';
         }
 
-        $discount = (($original - $special) / $original) * 100;
-
-        return number_format(max(0, min(100, $discount)), 2, '.', '');
+        return number_format(max(0, min(100, (($original - $special) / $original) * 100)), 2, '.', '');
     }
 
     private function storeCustomerSignature(string $signatureData, int $providerId, string $publicId): string
@@ -364,17 +279,13 @@ class ProviderOrderManagementController extends Controller
         $decodedSignature = base64_decode($encodedSignature, true);
 
         if ($decodedSignature === false) {
-            throw ValidationException::withMessages([
-                'customer_signature' => 'La firma del cliente no es valida.',
-            ]);
+            throw ValidationException::withMessages(['customer_signature' => 'La firma del cliente no es valida.']);
         }
 
         $signatureMaxBytes = (int) config('orders.signature.max_bytes', 512000);
 
         if (strlen($decodedSignature) > $signatureMaxBytes) {
-            throw ValidationException::withMessages([
-                'customer_signature' => 'La firma del cliente supera el tamano permitido.',
-            ]);
+            throw ValidationException::withMessages(['customer_signature' => 'La firma del cliente supera el tamano permitido.']);
         }
 
         $signaturePath = sprintf(
@@ -384,12 +295,8 @@ class ProviderOrderManagementController extends Controller
             Str::lower((string) Str::uuid()),
         );
 
-        $stored = Storage::disk('local')->put($signaturePath, $decodedSignature);
-
-        if (! $stored) {
-            throw ValidationException::withMessages([
-                'customer_signature' => 'No fue posible guardar la firma del cliente. Intenta nuevamente.',
-            ]);
+        if (! Storage::disk('local')->put($signaturePath, $decodedSignature)) {
+            throw ValidationException::withMessages(['customer_signature' => 'No fue posible guardar la firma del cliente.']);
         }
 
         return $signaturePath;

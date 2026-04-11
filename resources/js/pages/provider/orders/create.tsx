@@ -275,12 +275,6 @@ export default function ProviderCreateOrderPage({ status, providerWorkspace }: P
             return;
         }
 
-        if (orderForm.data.customer_email.trim().length === 0) {
-            setCustomerInfoError('Debes ingresar el correo del cliente para continuar.');
-
-            return;
-        }
-
         if (!orderForm.data.customer_signature) {
             setCustomerInfoError('Debes capturar la firma del cliente para continuar.');
 
@@ -332,7 +326,7 @@ export default function ProviderCreateOrderPage({ status, providerWorkspace }: P
             <div className="space-y-6 p-4">
                 <Heading
                     title="Crear pedidos"
-                    description="Flujo guiado: productos, cliente y confirmacion final con OTP"
+                    description="Flujo guiado: productos, cliente y firma. El pedido se confirma de inmediato."
                 />
 
                 {status && (
@@ -361,7 +355,7 @@ export default function ProviderCreateOrderPage({ status, providerWorkspace }: P
                             Nuevo pedido por pasos
                         </CardTitle>
                         <CardDescription>
-                            Paso 1: productos. Paso 2: cliente y firma. Paso 3: confirmar y enviar OTP.
+                            Paso 1: productos. Paso 2: cliente y firma. Paso 3: confirmar.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -624,7 +618,7 @@ export default function ProviderCreateOrderPage({ status, providerWorkspace }: P
 
                                     <div className="space-y-2">
                                         <label htmlFor="customer-email" className="text-sm font-medium">
-                                            Correo del cliente
+                                            Correo del cliente <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
                                         </label>
                                         <div className="relative">
                                             <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -760,12 +754,11 @@ export default function ProviderCreateOrderPage({ status, providerWorkspace }: P
                                             orderForm.processing ||
                                             selectedProducts.length === 0 ||
                                             orderForm.data.customer_user_id === '' ||
-                                            !orderForm.data.customer_signature ||
-                                            orderForm.data.customer_email.trim().length === 0
+                                            !orderForm.data.customer_signature
                                         }
                                     >
                                         <TicketPercent />
-                                        Generar pedido y enviar OTP
+                                        Generar pedido
                                     </Button>
                                 )}
 

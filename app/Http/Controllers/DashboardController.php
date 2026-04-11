@@ -6,8 +6,8 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Provider;
 use App\Models\ProviderProduct;
-use App\Services\OrderOtpService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -16,7 +16,7 @@ class DashboardController extends Controller
     /**
      * Handle the incoming request.
      */
-    public function __invoke(Request $request, OrderOtpService $otpService): Response
+    public function __invoke(Request $request): Response
     {
         $user = $request->user();
 
@@ -24,13 +24,18 @@ class DashboardController extends Controller
         $providerWorkspace = null;
 
         if ($user?->isAdmin()) {
+            $counts = DB::table('orders')
+                ->selectRaw("COUNT(*) as total, SUM(status = 'pending') as pending, SUM(status = 'confirmed') as confirmed")
+                ->whereNull('deleted_at')
+                ->first();
+
             $adminSummary = [
                 'products_count' => Product::query()->count(),
                 'providers_count' => Provider::query()->count(),
-                'pending_orders_count' => Order::query()->where('status', 'pending')->count(),
-                'confirmed_orders_count' => Order::query()->where('status', 'confirmed')->count(),
+                'pending_orders_count' => (int) ($counts->pending ?? 0),
+                'confirmed_orders_count' => (int) ($counts->confirmed ?? 0),
                 'recent_orders' => Order::query()
-                    ->with('provider.user:id,email')
+                    ->with('provider.user:id,username')
                     ->latest()
                     ->limit(6)
                     ->get()
@@ -40,7 +45,8 @@ class DashboardController extends Controller
                         'status' => $order->status->value,
                         'customer_email' => $order->customer_email,
                         'provider_name' => $order->provider?->company_name,
-                        'provider_email' => $order->provider?->user?->email,
+                        'provider_username' => $order->provider?->user?->username,
+                        'subtotal_special' => (string) $order->subtotal_special,
                         'total_discount' => (string) $order->total_discount,
                         'created_at' => $order->created_at?->toISOString(),
                     ])
@@ -58,47 +64,27 @@ class DashboardController extends Controller
                 ->whereHas('product', fn ($query) => $query->where('is_active', true))
                 ->count();
 
-            $pendingOrdersCount = Order::query()
+            $orderCounts = DB::table('orders')
+                ->selectRaw("SUM(status = 'pending') as pending, SUM(status = 'confirmed') as confirmed, SUM(subtotal_special) as total_sales")
                 ->where('provider_id', $provider->id)
-                ->where('status', 'pending')
-                ->count();
-
-            $confirmedOrdersCount = Order::query()
-                ->where('provider_id', $provider->id)
-                ->where('status', 'confirmed')
-                ->count();
-
-            $totalSavings = (float) Order::query()
-                ->where('provider_id', $provider->id)
-                ->sum('total_discount');
+                ->whereNull('deleted_at')
+                ->first();
 
             $recentOrders = Order::query()
-                ->with('otp')
                 ->where('provider_id', $provider->id)
                 ->latest()
                 ->limit(10)
                 ->get()
-                ->map(function (Order $order) use ($otpService): array {
-                    $otp = $order->otp;
-
-                    return [
-                        'public_id' => $order->public_id,
-                        'order_number' => $order->order_number ?? $order->id,
-                        'status' => $order->status->value,
-                        'customer_email' => $order->customer_email,
-                        'subtotal_special' => (string) $order->subtotal_special,
-                        'total_discount' => (string) $order->total_discount,
-                        'created_at' => $order->created_at?->toISOString(),
-                        'confirmed_at' => $order->confirmed_at?->toISOString(),
-                        'otp_expires_at' => $otp?->expires_at?->toISOString(),
-                        'otp_attempts_remaining' => $otp === null ? 0 : max(0, $otp->max_attempts - $otp->attempts),
-                        'otp_resend_count' => $otp?->resend_count,
-                        'can_resend_otp' => $otp !== null
-                            && $otp->verified_at === null
-                            && $order->status->value === 'pending'
-                            && $otpService->canResend($otp),
-                    ];
-                })
+                ->map(fn (Order $order): array => [
+                    'public_id' => $order->public_id,
+                    'order_number' => $order->order_number ?? $order->id,
+                    'status' => $order->status->value,
+                    'customer_email' => $order->customer_email,
+                    'subtotal_special' => (string) $order->subtotal_special,
+                    'total_discount' => (string) $order->total_discount,
+                    'created_at' => $order->created_at?->toISOString(),
+                    'confirmed_at' => $order->confirmed_at?->toISOString(),
+                ])
                 ->values()
                 ->all();
 
@@ -109,9 +95,9 @@ class DashboardController extends Controller
                 ],
                 'metrics' => [
                     'products_count' => $productsCount,
-                    'pending_orders_count' => $pendingOrdersCount,
-                    'confirmed_orders_count' => $confirmedOrdersCount,
-                    'total_savings' => $totalSavings,
+                    'pending_orders_count' => (int) ($orderCounts->pending ?? 0),
+                    'confirmed_orders_count' => (int) ($orderCounts->confirmed ?? 0),
+                    'total_sales' => (float) ($orderCounts->total_sales ?? 0),
                 ],
                 'recent_orders' => $recentOrders,
             ];

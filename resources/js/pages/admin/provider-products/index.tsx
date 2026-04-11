@@ -17,7 +17,6 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -248,16 +247,18 @@ function EditableAssignmentCard({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <CardTitle>
-                            {assignment.product_name} ({assignment.product_code})
+                            {assignment.product_name}
                         </CardTitle>
                         <CardDescription>{assignment.provider_name}</CardDescription>
+                        <div className="mt-2 flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground line-through">
+                                {formatCurrencyLabel(assignment.product_original_price ?? '0.00')}
+                            </span>
+                            <span className="text-base font-semibold text-amber-600 dark:text-amber-400">
+                                {formatCurrencyLabel(assignment.special_price)}
+                            </span>
+                        </div>
                     </div>
-                    <Badge
-                        variant="outline"
-                        className="border-amber-500/30 bg-amber-500/5"
-                    >
-                        Precio especial: {formatCurrencyLabel(assignment.special_price)}
-                    </Badge>
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2">

@@ -47,7 +47,7 @@ class SendOrderSummaryToCustomerJob implements ShouldBeUnique, ShouldQueue
     public function handle(): void
     {
         $order = Order::query()
-            ->with(['items', 'provider.user'])
+            ->with(['items.product', 'provider.user'])
             ->find($this->orderId);
 
         if ($order === null) {

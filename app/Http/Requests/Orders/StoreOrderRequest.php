@@ -27,7 +27,7 @@ class StoreOrderRequest extends FormRequest
                         ->whereNull('deleted_at'),
                 ),
             ],
-            'customer_email' => ['required', 'email:rfc'],
+            'customer_email' => ['nullable', 'email:rfc'],
             'customer_signature' => [
                 'required',
                 'string',

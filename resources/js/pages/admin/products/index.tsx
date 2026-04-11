@@ -12,7 +12,6 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -22,6 +21,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatCopCurrency } from '@/lib/utils';
 import { destroy, index, store, update } from '@/routes/admin/products';
 
@@ -111,16 +111,15 @@ function EditableProductCard({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <CardTitle>{product.name}</CardTitle>
-                        <CardDescription>
-                            COD {product.code} • Barras {product.barcode}
-                        </CardDescription>
+                        <div className="mt-1 flex items-center gap-3">
+                            <span className="text-base font-semibold text-emerald-700 dark:text-emerald-400">
+                                {formatCopCurrency(product.original_price)}
+                            </span>
+                            <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                                Embalaje ×{product.packaging_multiple}
+                            </span>
+                        </div>
                     </div>
-                    <Badge
-                        variant="outline"
-                        className="border-emerald-500/30 bg-emerald-500/5"
-                    >
-                        {product.provider_products_count} asignaciones
-                    </Badge>
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2">
@@ -142,18 +141,31 @@ function EditableProductCard({
                         <PencilLine />
                         Editar
                     </Button>
-                    <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleDelete}
-                        disabled={
-                            form.processing || product.provider_products_count > 0
-                        }
-                    >
-                        <Trash2 />
-                        Eliminar
-                    </Button>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <span tabIndex={product.provider_products_count > 0 ? 0 : undefined}>
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={handleDelete}
+                                        disabled={
+                                            form.processing || product.provider_products_count > 0
+                                        }
+                                    >
+                                        <Trash2 />
+                                        Eliminar
+                                    </Button>
+                                </span>
+                            </TooltipTrigger>
+                            {product.provider_products_count > 0 && (
+                                <TooltipContent side="top">
+                                    <p>No se puede eliminar: el producto está asignado a {product.provider_products_count} {product.provider_products_count === 1 ? 'proveedor' : 'proveedores'}.</p>
+                                </TooltipContent>
+                            )}
+                        </Tooltip>
+                    </TooltipProvider>
                 </div>
             </CardHeader>
 

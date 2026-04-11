@@ -1,10 +1,10 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, useForm } from '@inertiajs/react';
 import {
+    Download,
     Eye,
     Minus,
     PencilLine,
     Plus,
-    ReceiptText,
     Search,
     Trash2,
 } from 'lucide-react';
@@ -24,163 +24,124 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { dashboard } from '@/routes';
+import OrderExportController from '@/actions/App/Http/Controllers/Admin/OrderExportController';
 import {
-    create as createProviderOrder,
-    destroy as destroyProviderOrder,
-    index as providerOrdersIndex,
-    signature as providerOrderSignature,
-    update as updateProviderOrder,
-} from '@/routes/provider/orders';
+    destroy as destroyAdminOrder,
+    index as adminOrdersIndex,
+    signature as adminOrderSignature,
+    update as updateAdminOrder,
+} from '@/routes/admin/orders';
 
-type ProviderWorkspace = {
-    provider: {
-        company_name: string;
-        stand_label: string;
-    };
-    products: {
-        id: number;
-        product_id: number;
-        product_name: string | null;
-        original_price: string;
-        default_discount_percent: string;
-        packaging_multiple: number;
-    }[];
-    orders: {
-        public_id: string;
-        order_number: number;
-        status: string;
-        customer_email: string | null;
-        subtotal_original: string;
-        subtotal_special: string;
-        total_discount: string;
-        created_at: string | null;
-        confirmed_at: string | null;
-        signature_url: string;
-        can_edit: boolean;
-        can_delete: boolean;
-        items: {
-            id: number;
-            product_id: number | null;
-            product_name: string;
-            quantity: number;
-            unit_original_price: string;
-            unit_special_price: string;
-            discount_percent: string;
-            line_special_total: string;
-        }[];
-    }[];
+type Product = {
+    id: number;
+    product_id: number;
+    product_name: string | null;
+    original_price: string;
+    default_discount_percent: string;
+    packaging_multiple: number;
 };
 
-type EditableItemState = {
+type Provider = {
+    id: number;
+    company_name: string;
+    products: Product[];
+};
+
+type OrderItem = {
+    id: number;
+    product_id: number | null;
+    product_name: string;
     quantity: number;
+    unit_original_price: string;
+    unit_special_price: string;
+    discount_percent: string;
+    line_special_total: string;
+};
+
+type Order = {
+    public_id: string;
+    order_number: number;
+    provider_id: number;
+    provider_name: string | null;
+    status: string;
+    customer_email: string | null;
+    subtotal_original: string;
+    subtotal_special: string;
+    total_discount: string;
+    created_at: string | null;
+    confirmed_at: string | null;
+    signature_url: string;
+    can_edit: boolean;
+    can_delete: boolean;
+    items: OrderItem[];
 };
 
 type Props = {
     status?: string;
-    providerWorkspace: ProviderWorkspace;
+    orders: Order[];
+    providers: Provider[];
 };
+
+type EditableItemState = { quantity: number };
 
 const currencyFormatter = new Intl.NumberFormat('es-CO', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
 });
 
-const formatCurrency = (value: number): string => {
-    return currencyFormatter.format(value);
-};
+const formatCurrency = (value: number) => currencyFormatter.format(value);
 
-const formatDateTime = (value: string | null): string => {
-    if (value === null) {
-        return 'Sin fecha';
-    }
-
+const formatDateTime = (value: string | null) => {
+    if (!value) return 'Sin fecha';
     return new Date(value).toLocaleString();
 };
 
-const getStatusLabel = (status: string): string => {
-    if (status === 'confirmed') {
-        return 'Confirmado';
-    }
-
-    if (status === 'pending') {
-        return 'Pendiente';
-    }
-
-    if (status === 'expired') {
-        return 'Expirado';
-    }
-
+const getStatusLabel = (status: string) => {
+    if (status === 'confirmed') return 'Confirmado';
+    if (status === 'pending') return 'Pendiente';
     return status;
 };
 
-const normalizeDiscountPercent = (value: number): number => {
-    if (Number.isNaN(value)) {
-        return 0;
-    }
+const normalizeDiscountPercent = (value: number) =>
+    Number.isNaN(value) ? 0 : Math.min(100, Math.max(0, Math.round(value * 100) / 100));
 
-    return Math.min(100, Math.max(0, Math.round(value * 100) / 100));
+const normalizeQuantity = (value: number, packagingMultiple: number) => {
+    if (Number.isNaN(value) || value <= 0) return 0;
+    const safe = Math.max(1, packagingMultiple);
+    const rounded = Math.round(value);
+    if (rounded <= safe) return safe;
+    const remainder = rounded % safe;
+    return remainder === 0 ? rounded : rounded + (safe - remainder);
 };
 
-const normalizeQuantity = (value: number, packagingMultiple: number): number => {
-    if (Number.isNaN(value) || value <= 0) {
-        return 0;
-    }
+const calculateUnitSpecialPrice = (originalPrice: number, discountPercent: number) =>
+    Math.max(0, originalPrice * ((100 - normalizeDiscountPercent(discountPercent)) / 100));
 
-    const safePackaging = Math.max(1, packagingMultiple);
-    const roundedValue = Math.round(value);
-
-    if (roundedValue <= safePackaging) {
-        return safePackaging;
-    }
-
-    const remainder = roundedValue % safePackaging;
-
-    if (remainder === 0) {
-        return roundedValue;
-    }
-
-    return roundedValue + (safePackaging - remainder);
-};
-
-const calculateUnitSpecialPrice = (originalPrice: number, discountPercent: number): number => {
-    const factor = (100 - normalizeDiscountPercent(discountPercent)) / 100;
-
-    return Math.max(0, originalPrice * factor);
-};
-
-function EditableOrderCard({
-    order,
-    products,
-}: {
-    order: ProviderWorkspace['orders'][number];
-    products: ProviderWorkspace['products'];
-}) {
+function EditableOrderCard({ order, providers }: { order: Order; providers: Provider[] }) {
     const [isViewing, setIsViewing] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [orderItemsError, setOrderItemsError] = useState<string | null>(null);
     const [hasSignatureError, setHasSignatureError] = useState(false);
+    const [orderItemsError, setOrderItemsError] = useState<string | null>(null);
+
+    const providerProducts = useMemo(
+        () => providers.find((p) => p.id === order.provider_id)?.products ?? [],
+        [providers, order.provider_id],
+    );
 
     const [editableItems, setEditableItems] = useState<Record<number, EditableItemState>>(() => {
-        const initialState: Record<number, EditableItemState> = {};
-
+        const state: Record<number, EditableItemState> = {};
         order.items.forEach((item) => {
             if (item.product_id !== null) {
-                initialState[item.product_id] = {
-                    quantity: item.quantity,
-                };
+                state[item.product_id] = { quantity: item.quantity };
             }
         });
-
-        return initialState;
+        return state;
     });
 
     const form = useForm<{
         customer_email: string;
         customer_signature: string;
-        items: {
-            product_id: number;
-            quantity: number;
-        }[];
+        items: { product_id: number; quantity: number }[];
     }>({
         customer_email: order.customer_email ?? '',
         customer_signature: '',
@@ -188,14 +149,12 @@ function EditableOrderCard({
     });
 
     const selectedProducts = useMemo(() => {
-        return products
+        return providerProducts
             .map((product) => {
-                const editable = editableItems[product.product_id];
-                const quantity = editable?.quantity ?? 0;
+                const quantity = editableItems[product.product_id]?.quantity ?? 0;
                 const discountPercent = Number(product.default_discount_percent);
                 const originalPrice = Number(product.original_price);
                 const unitSpecialPrice = calculateUnitSpecialPrice(originalPrice, discountPercent);
-
                 return {
                     ...product,
                     quantity,
@@ -205,103 +164,44 @@ function EditableOrderCard({
                     line_original_total: originalPrice * quantity,
                 };
             })
-            .filter((product) => product.quantity > 0);
-    }, [products, editableItems]);
+            .filter((p) => p.quantity > 0);
+    }, [providerProducts, editableItems]);
 
-    const estimatedOriginalTotal = selectedProducts.reduce((total, product) => {
-        return total + product.line_original_total;
-    }, 0);
-
-    const estimatedSpecialTotal = selectedProducts.reduce((total, product) => {
-        return total + product.line_special_total;
-    }, 0);
-
-    const estimatedDiscountTotal = estimatedOriginalTotal - estimatedSpecialTotal;
-
-    const toggleView = () => {
-        setIsViewing((previous) => !previous);
-    };
-
-    const toggleEdit = () => {
-        if (!order.can_edit) {
-            return;
-        }
-
-        setIsEditing((previous) => !previous);
-        setIsViewing(true);
-    };
+    const estimatedSpecialTotal = selectedProducts.reduce((t, p) => t + p.line_special_total, 0);
+    const estimatedDiscountTotal = selectedProducts.reduce((t, p) => t + p.line_original_total - p.line_special_total, 0);
 
     const updateItemQuantity = (productId: number, rawQuantity: number) => {
-        const product = products.find((item) => item.product_id === productId);
-
-        if (!product) {
-            return;
-        }
-
-        const safePackaging = Math.max(1, product.packaging_multiple);
-        const quantity = normalizeQuantity(rawQuantity, safePackaging);
-
-        setEditableItems((current) => ({
-            ...current,
-            [productId]: {
-                quantity,
-            },
-        }));
+        const product = providerProducts.find((p) => p.product_id === productId);
+        if (!product) return;
+        const safe = Math.max(1, product.packaging_multiple);
+        setEditableItems((curr) => ({ ...curr, [productId]: { quantity: normalizeQuantity(rawQuantity, safe) } }));
     };
 
     const increaseQuantity = (productId: number) => {
-        const product = products.find((item) => item.product_id === productId);
-
-        if (!product) {
-            return;
-        }
-
-        const safePackaging = Math.max(1, product.packaging_multiple);
-        const currentQuantity = editableItems[productId]?.quantity ?? 0;
-        updateItemQuantity(productId, currentQuantity + safePackaging);
+        const product = providerProducts.find((p) => p.product_id === productId);
+        if (!product) return;
+        const safe = Math.max(1, product.packaging_multiple);
+        updateItemQuantity(productId, (editableItems[productId]?.quantity ?? 0) + safe);
     };
 
     const decreaseQuantity = (productId: number) => {
-        const product = products.find((item) => item.product_id === productId);
-
-        if (!product) {
-            return;
-        }
-
-        const safePackaging = Math.max(1, product.packaging_multiple);
-        const currentQuantity = editableItems[productId]?.quantity ?? 0;
-        const nextQuantity = currentQuantity - safePackaging;
-
-        setEditableItems((current) => ({
-            ...current,
-            [productId]: {
-                quantity: nextQuantity <= 0 ? 0 : nextQuantity,
-            },
-        }));
+        const product = providerProducts.find((p) => p.product_id === productId);
+        if (!product) return;
+        const safe = Math.max(1, product.packaging_multiple);
+        const next = (editableItems[productId]?.quantity ?? 0) - safe;
+        setEditableItems((curr) => ({ ...curr, [productId]: { quantity: Math.max(0, next) } }));
     };
 
     const submitUpdate = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-
-        const items = selectedProducts.map((product) => ({
-            product_id: product.product_id,
-            quantity: product.quantity,
-        }));
-
+        const items = selectedProducts.map((p) => ({ product_id: p.product_id, quantity: p.quantity }));
         if (items.length === 0) {
-            setOrderItemsError('Debes seleccionar al menos un producto para actualizar la orden.');
-
+            setOrderItemsError('Debes seleccionar al menos un producto.');
             return;
         }
-
         setOrderItemsError(null);
-
-        form.transform((data) => ({
-            ...data,
-            items,
-        }));
-
-        form.patch(updateProviderOrder.url({ order: order.public_id }), {
+        form.transform((data) => ({ ...data, items }));
+        form.patch(updateAdminOrder.url({ order: order.public_id }), {
             preserveScroll: true,
             onSuccess: () => {
                 form.reset('customer_signature', 'items');
@@ -311,20 +211,11 @@ function EditableOrderCard({
     };
 
     const handleDelete = () => {
-        if (!order.can_delete) {
-            return;
-        }
-
-        if (!window.confirm(`Se eliminara la Orden Nro ${order.order_number}. Esta accion no se puede deshacer.`)) {
-            return;
-        }
-
-        form.delete(destroyProviderOrder.url({ order: order.public_id }), {
-            preserveScroll: true,
-        });
+        if (!window.confirm(`Se eliminara la Orden Nro ${order.order_number}. Esta accion no se puede deshacer.`)) return;
+        form.delete(destroyAdminOrder.url({ order: order.public_id }), { preserveScroll: true });
     };
 
-    const signatureUrl = providerOrderSignature.url({ order: order.public_id });
+    const signatureUrl = adminOrderSignature.url({ order: order.public_id });
 
     return (
         <Card className="overflow-hidden border-cyan-500/20 shadow-sm">
@@ -333,7 +224,8 @@ function EditableOrderCard({
                     <div>
                         <CardTitle>Orden Nro {order.order_number}</CardTitle>
                         <CardDescription>
-                            {order.customer_email ? `Cliente: ${order.customer_email}` : 'Sin correo registrado'}
+                            {order.provider_name} •{' '}
+                            {order.customer_email ?? 'Sin correo registrado'}
                         </CardDescription>
                     </div>
                     <Badge variant={order.status === 'confirmed' ? 'default' : 'outline'}>
@@ -346,7 +238,7 @@ function EditableOrderCard({
                         type="button"
                         variant={isViewing ? 'secondary' : 'outline'}
                         size="sm"
-                        onClick={toggleView}
+                        onClick={() => setIsViewing((v) => !v)}
                     >
                         <Eye />
                         Ver
@@ -355,8 +247,8 @@ function EditableOrderCard({
                         type="button"
                         variant={isEditing ? 'secondary' : 'outline'}
                         size="sm"
-                        onClick={toggleEdit}
-                        disabled={!order.can_edit}
+                        onClick={() => { setIsEditing((e) => !e); setIsViewing(true); }}
+                        disabled={!order.can_edit || providerProducts.length === 0}
                     >
                         <PencilLine />
                         Editar
@@ -407,7 +299,7 @@ function EditableOrderCard({
                             {!hasSignatureError && (
                                 <img
                                     src={signatureUrl}
-                                    alt={`Firma de la Orden Nro ${order.order_number}`}
+                                    alt={`Firma Orden Nro ${order.order_number}`}
                                     className="h-48 w-full rounded-md border object-contain"
                                     onError={() => setHasSignatureError(true)}
                                 />
@@ -423,10 +315,7 @@ function EditableOrderCard({
                             <p className="text-sm font-medium">Items de la orden</p>
                             <div className="space-y-2">
                                 {order.items.map((item) => (
-                                    <div
-                                        key={item.id}
-                                        className="rounded-md border bg-muted/20 px-3 py-2 text-xs"
-                                    >
+                                    <div key={item.id} className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
                                         <p className="font-medium">{item.product_name}</p>
                                         <p className="text-muted-foreground">
                                             Cantidad: {item.quantity} • -{Number(item.discount_percent).toFixed(2)}%
@@ -434,17 +323,13 @@ function EditableOrderCard({
                                         <p className="text-muted-foreground">
                                             {Number(item.discount_percent) > 0 ? (
                                                 <>
-                                                    <span className="line-through">
-                                                        ${formatCurrency(Number(item.unit_original_price))}
-                                                    </span>
+                                                    <span className="line-through">${formatCurrency(Number(item.unit_original_price))}</span>
                                                     <span className="mx-1">{'->'}</span>
                                                 </>
                                             ) : null}
                                             Unitario ${formatCurrency(Number(item.unit_special_price))}
                                         </p>
-                                        <p className="font-medium">
-                                            Total ${formatCurrency(Number(item.line_special_total))}
-                                        </p>
+                                        <p className="font-medium">Total ${formatCurrency(Number(item.line_special_total))}</p>
                                     </div>
                                 ))}
                             </div>
@@ -455,21 +340,22 @@ function EditableOrderCard({
 
             {isEditing && (
                 <CardContent className="space-y-4 border-t border-dashed border-cyan-500/30 bg-cyan-500/3">
+                    {providerProducts.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                            Este proveedor no tiene productos activos disponibles para editar.
+                        </p>
+                    )}
                     <form onSubmit={submitUpdate} className="space-y-4">
                         <div className="space-y-2">
-                            <label
-                                htmlFor={`customer-email-${order.public_id}`}
-                                className="text-sm font-medium"
-                            >
-                                Correo del cliente <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
+                            <label htmlFor={`customer-email-${order.public_id}`} className="text-sm font-medium">
+                                Correo del cliente{' '}
+                                <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
                             </label>
                             <Input
                                 id={`customer-email-${order.public_id}`}
                                 type="email"
                                 value={form.data.customer_email}
-                                onChange={(event) =>
-                                    form.setData('customer_email', event.target.value)
-                                }
+                                onChange={(e) => form.setData('customer_email', e.target.value)}
                                 placeholder="cliente@correo.com"
                             />
                             <InputError message={form.errors.customer_email} />
@@ -480,21 +366,16 @@ function EditableOrderCard({
                             {!hasSignatureError && (
                                 <img
                                     src={signatureUrl}
-                                    alt={`Firma actual de la Orden Nro ${order.order_number}`}
+                                    alt={`Firma actual Orden Nro ${order.order_number}`}
                                     className="h-40 w-full rounded-md border object-contain"
                                     onError={() => setHasSignatureError(true)}
                                 />
-                            )}
-                            {hasSignatureError && (
-                                <div className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
-                                    No fue posible cargar la firma actual.
-                                </div>
                             )}
                         </div>
 
                         <OrderSignaturePad
                             value={form.data.customer_signature}
-                            onChange={(signature) => form.setData('customer_signature', signature)}
+                            onChange={(sig) => form.setData('customer_signature', sig)}
                             error={form.errors.customer_signature}
                         />
 
@@ -509,9 +390,8 @@ function EditableOrderCard({
                         </div>
 
                         <div className="grid gap-3">
-                            {products.map((product) => {
-                                const editable = editableItems[product.product_id];
-                                const quantity = editable?.quantity ?? 0;
+                            {providerProducts.map((product) => {
+                                const quantity = editableItems[product.product_id]?.quantity ?? 0;
                                 const normalizedDiscount = normalizeDiscountPercent(Number(product.default_discount_percent));
                                 const originalPrice = Number(product.original_price);
                                 const unitSpecialPrice = calculateUnitSpecialPrice(originalPrice, normalizedDiscount);
@@ -529,33 +409,25 @@ function EditableOrderCard({
                                         <div className="space-y-1">
                                             <p className="font-medium">{product.product_name}</p>
                                             <p className="text-xs text-muted-foreground">
-                                                Embalaje x{safePackaging} • Minimo y step {safePackaging}
+                                                Embalaje x{safePackaging}
                                             </p>
                                             <p className="text-xs text-muted-foreground">
                                                 {normalizedDiscount > 0 ? (
                                                     <>
                                                         <span className="line-through">${formatCurrency(originalPrice)}</span>
                                                         <span className="mx-1">{'->'}</span>
-                                                        <span className="font-medium text-foreground">
-                                                            ${formatCurrency(unitSpecialPrice)}
-                                                        </span>
+                                                        <span className="font-medium text-foreground">${formatCurrency(unitSpecialPrice)}</span>
                                                         <span className="ml-2">(-{normalizedDiscount.toFixed(2)}%)</span>
                                                     </>
                                                 ) : (
-                                                    <span className="font-medium text-foreground">
-                                                        ${formatCurrency(originalPrice)}
-                                                    </span>
+                                                    <span className="font-medium text-foreground">${formatCurrency(originalPrice)}</span>
                                                 )}
                                             </p>
                                         </div>
                                         <div className="space-y-2">
-                                            <div className="rounded-md border bg-muted/20 px-2 py-1 text-xs">
-                                                <p className="text-muted-foreground">Descuento asignado</p>
-                                                <p className="font-medium text-foreground">{normalizedDiscount.toFixed(2)}%</p>
-                                            </div>
                                             <div className="space-y-1">
                                                 <label
-                                                    htmlFor={`quantity-${order.public_id}-${product.product_id}`}
+                                                    htmlFor={`qty-${order.public_id}-${product.product_id}`}
                                                     className="text-xs text-muted-foreground"
                                                 >
                                                     Cantidad
@@ -571,16 +443,13 @@ function EditableOrderCard({
                                                         <Minus className="size-4" />
                                                     </Button>
                                                     <Input
-                                                        id={`quantity-${order.public_id}-${product.product_id}`}
+                                                        id={`qty-${order.public_id}-${product.product_id}`}
                                                         type="number"
                                                         min={0}
                                                         step={safePackaging}
                                                         value={quantity}
-                                                        onChange={(event) =>
-                                                            updateItemQuantity(
-                                                                product.product_id,
-                                                                Number(event.target.value),
-                                                            )
+                                                        onChange={(e) =>
+                                                            updateItemQuantity(product.product_id, Number(e.target.value))
                                                         }
                                                     />
                                                     <Button
@@ -599,79 +468,64 @@ function EditableOrderCard({
                             })}
                         </div>
 
-                        {orderItemsError && (
-                            <p className="text-sm text-destructive">{orderItemsError}</p>
-                        )}
-
+                        {orderItemsError && <p className="text-sm text-destructive">{orderItemsError}</p>}
                         <InputError message={form.errors.items} />
 
                         <div className="flex flex-wrap gap-2">
-                            <Button type="submit" disabled={form.processing || !order.can_edit}>
+                            <Button type="submit" disabled={form.processing}>
                                 Guardar cambios
                             </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setIsEditing(false)}
-                            >
+                            <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
                                 Cancelar
                             </Button>
                         </div>
                     </form>
                 </CardContent>
             )}
-
         </Card>
     );
 }
 
-export default function ProviderOrdersIndexPage({
-    status,
-    providerWorkspace,
-}: Props) {
+export default function AdminOrdersIndexPage({ status, orders, providers }: Props) {
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed'>(
-        'all',
-    );
+    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed'>('all');
 
     const filteredOrders = useMemo(() => {
         const term = search.trim().toLowerCase();
-
-        return providerWorkspace.orders.filter((order) => {
+        return orders.filter((order) => {
             const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
             const matchesSearch =
                 term === '' ||
                 String(order.order_number).includes(term) ||
-                (order.customer_email ?? '').toLowerCase().includes(term);
-
+                (order.customer_email ?? '').toLowerCase().includes(term) ||
+                (order.provider_name ?? '').toLowerCase().includes(term);
             return matchesStatus && matchesSearch;
         });
-    }, [providerWorkspace.orders, search, statusFilter]);
+    }, [orders, search, statusFilter]);
 
-    const summary = useMemo(() => {
-        const pending = providerWorkspace.orders.filter(
-            (order) => order.status === 'pending',
-        ).length;
-        const confirmed = providerWorkspace.orders.filter(
-            (order) => order.status === 'confirmed',
-        ).length;
-
-        return {
-            total: providerWorkspace.orders.length,
-            pending,
-            confirmed,
-        };
-    }, [providerWorkspace.orders]);
+    const summary = useMemo(() => ({
+        total: orders.length,
+        pending: orders.filter((o) => o.status === 'pending').length,
+        confirmed: orders.filter((o) => o.status === 'confirmed').length,
+    }), [orders]);
 
     return (
         <>
             <Head title="Pedidos" />
 
             <div className="space-y-6 p-4">
-                <Heading
-                    title="Pedidos"
-                    description="Gestiona pedidos con firma del cliente y control total por orden"
-                />
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <Heading
+                        title="Pedidos"
+                        description="Visualiza, edita y elimina cualquier pedido del sistema."
+                    />
+                    <Button asChild variant="default">
+                        <a href={OrderExportController.url()} download>
+                            <Download />
+                            Descargar pedidos (.xlsx)
+                        </a>
+                    </Button>
+                </div>
 
                 {status && (
                     <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -679,33 +533,10 @@ export default function ProviderOrdersIndexPage({
                     </div>
                 )}
 
-                <Card className="border-cyan-500/25 bg-linear-to-r from-cyan-500/10 via-sky-500/10 to-teal-500/10">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <ReceiptText className="size-5 text-cyan-600" />
-                            {providerWorkspace.provider.company_name}
-                        </CardTitle>
-                        <CardDescription>
-                            {providerWorkspace.provider.stand_label}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                        <Button asChild>
-                            <Link href={createProviderOrder()}>
-                                <Plus className="size-4" />
-                                Nuevo pedido
-                            </Link>
-                        </Button>
-                        <Button asChild variant="outline">
-                            <Link href={dashboard()}>Volver al dashboard</Link>
-                        </Button>
-                    </CardContent>
-                </Card>
-
                 <div className="grid gap-4 md:grid-cols-3">
                     <Card>
                         <CardHeader>
-                            <CardDescription>Total de ordenes</CardDescription>
+                            <CardDescription>Total de pedidos</CardDescription>
                             <CardTitle>{summary.total}</CardTitle>
                         </CardHeader>
                     </Card>
@@ -717,7 +548,7 @@ export default function ProviderOrdersIndexPage({
                     </Card>
                     <Card>
                         <CardHeader>
-                            <CardDescription>Confirmadas</CardDescription>
+                            <CardDescription>Confirmados</CardDescription>
                             <CardTitle>{summary.confirmed}</CardTitle>
                         </CardHeader>
                     </Card>
@@ -726,21 +557,18 @@ export default function ProviderOrdersIndexPage({
                 <Card>
                     <CardHeader>
                         <CardTitle>Filtros</CardTitle>
-                        <CardDescription>
-                            Busca por numero de orden o correo, y filtra por estado.
-                        </CardDescription>
+                        <CardDescription>Busca por numero, correo o proveedor, y filtra por estado.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <div className="relative">
                             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 value={search}
-                                onChange={(event) => setSearch(event.target.value)}
-                                placeholder="Ej. 12 o cliente@correo.com"
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Ej. 12, cliente@correo.com o nombre de proveedor"
                                 className="pl-9"
                             />
                         </div>
-
                         <div className="flex flex-wrap gap-2">
                             <Button
                                 type="button"
@@ -748,7 +576,7 @@ export default function ProviderOrdersIndexPage({
                                 variant={statusFilter === 'all' ? 'default' : 'outline'}
                                 onClick={() => setStatusFilter('all')}
                             >
-                                Todas
+                                Todos
                             </Button>
                             <Button
                                 type="button"
@@ -764,9 +592,8 @@ export default function ProviderOrdersIndexPage({
                                 variant={statusFilter === 'confirmed' ? 'default' : 'outline'}
                                 onClick={() => setStatusFilter('confirmed')}
                             >
-                                Confirmadas
+                                Confirmados
                             </Button>
-
                         </div>
                     </CardContent>
                 </Card>
@@ -776,10 +603,9 @@ export default function ProviderOrdersIndexPage({
                         <EditableOrderCard
                             key={order.public_id}
                             order={order}
-                            products={providerWorkspace.products}
+                            providers={providers}
                         />
                     ))}
-
                     {filteredOrders.length === 0 && (
                         <Card>
                             <CardContent>
@@ -795,15 +621,9 @@ export default function ProviderOrdersIndexPage({
     );
 }
 
-ProviderOrdersIndexPage.layout = {
+AdminOrdersIndexPage.layout = {
     breadcrumbs: [
-        {
-            title: 'Dashboard',
-            href: dashboard(),
-        },
-        {
-            title: 'Pedidos',
-            href: providerOrdersIndex(),
-        },
+        { title: 'Dashboard', href: dashboard() },
+        { title: 'Pedidos', href: adminOrdersIndex() },
     ],
 };

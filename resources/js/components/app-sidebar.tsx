@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     Boxes,
+    ClipboardList,
     ClipboardSignature,
     LayoutGrid,
     PackageSearch,
@@ -23,6 +24,7 @@ import {
 import { dashboard } from '@/routes';
 import { index as adminProductsIndex } from '@/routes/admin/products';
 import { index as adminProviderProductsIndex } from '@/routes/admin/provider-products';
+import { index as adminOrdersIndex } from '@/routes/admin/orders';
 import { index as adminRolesIndex } from '@/routes/admin/roles';
 import { index as adminUsersIndex } from '@/routes/admin/users';
 import { index as providerOrdersIndex } from '@/routes/provider/orders';
@@ -40,6 +42,12 @@ export function AppSidebar() {
     ];
 
     if (auth.user.role === 'admin') {
+        mainNavItems.push({
+            title: 'Pedidos',
+            href: adminOrdersIndex(),
+            icon: ClipboardList,
+        });
+
         mainNavItems.push({
             title: 'Productos',
             href: adminProductsIndex(),

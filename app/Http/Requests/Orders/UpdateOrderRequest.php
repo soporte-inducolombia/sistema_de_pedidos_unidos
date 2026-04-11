@@ -24,7 +24,7 @@ class UpdateOrderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'customer_email' => ['required', 'email:rfc'],
+            'customer_email' => ['nullable', 'email:rfc'],
             'customer_signature' => [
                 'nullable',
                 'string',
